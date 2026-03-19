@@ -366,6 +366,153 @@ describe('SourceControlImportService', () => {
 	});
 
 	describe('importFoldersFromWorkFolder', () => {
-		// add tests for this.
+		const mockUser = Object.assign(new User(), { id: 'user1' });
+
+		const mockCandidate = {
+			file: '/mock/folders.json',
+			id: 'folders',
+			name: 'folders',
+			type: 'folders' as const,
+			status: 'modified' as const,
+			location: 'remote' as const,
+			conflict: false,
+			updatedAt: new Date().toISOString(),
+		};
+
+		it('should return early if folders array is empty', async () => {
+			projectRepository.find.mockResolvedValue([]);
+			projectRepository.getPersonalProjectForUserOrFail.mockResolvedValue(
+				Object.assign(new Project(), { id: 'personal1' }),
+			);
+			fsReadFile.mockResolvedValue(JSON.stringify({ folders: [] }));
+
+			const result = await service.importFoldersFromWorkFolder(mockUser, mockCandidate);
+
+			expect(result).toBeUndefined();
+			expect(folderRepository.upsert).not.toHaveBeenCalled();
+		});
+
+		it('should create folders with the matching homeProject', async () => {
+			const now = new Date();
+			const mockProject = Object.assign(new Project(), { id: 'project1' });
+			const mockPersonalProject = Object.assign(new Project(), { id: 'personal1' });
+
+			projectRepository.find.mockResolvedValue([mockProject]);
+			projectRepository.getPersonalProjectForUserOrFail.mockResolvedValue(mockPersonalProject);
+
+			const folder: ExportableFolder = {
+				id: 'folder1',
+				name: 'Folder 1',
+				parentFolderId: null,
+				homeProjectId: 'project1',
+				createdAt: now.toISOString(),
+				updatedAt: now.toISOString(),
+			};
+			fsReadFile.mockResolvedValue(JSON.stringify({ folders: [folder] }));
+
+			await service.importFoldersFromWorkFolder(mockUser, mockCandidate);
+
+			expect(folderRepository.create).toHaveBeenCalledWith(
+				expect.objectContaining({ id: 'folder1', name: 'Folder 1', homeProject: { id: 'project1' } }),
+			);
+		});
+
+		it('should fall back to personal project if homeProjectId does not match any project', async () => {
+			const now = new Date();
+			const mockPersonalProject = Object.assign(new Project(), { id: 'personal1' });
+
+			projectRepository.find.mockResolvedValue([]);
+			projectRepository.getPersonalProjectForUserOrFail.mockResolvedValue(mockPersonalProject);
+
+			const folder: ExportableFolder = {
+				id: 'folder2',
+				name: 'Folder 2',
+				parentFolderId: null,
+				homeProjectId: 'nonexistent-project',
+				createdAt: now.toISOString(),
+				updatedAt: now.toISOString(),
+			};
+			fsReadFile.mockResolvedValue(JSON.stringify({ folders: [folder] }));
+
+			await service.importFoldersFromWorkFolder(mockUser, mockCandidate);
+
+			expect(folderRepository.create).toHaveBeenCalledWith(
+				expect.objectContaining({ homeProject: { id: 'personal1' } }),
+			);
+		});
+
+		it('should set up parentFolder relationship after creating folders', async () => {
+			const now = new Date();
+			const mockProject = Object.assign(new Project(), { id: 'project1' });
+			const mockPersonalProject = Object.assign(new Project(), { id: 'personal1' });
+
+			projectRepository.find.mockResolvedValue([mockProject]);
+			projectRepository.getPersonalProjectForUserOrFail.mockResolvedValue(mockPersonalProject);
+
+			const parentFolder: ExportableFolder = {
+				id: 'parent1',
+				name: 'Parent',
+				parentFolderId: null,
+				homeProjectId: 'project1',
+				createdAt: now.toISOString(),
+				updatedAt: now.toISOString(),
+			};
+			const childFolder: ExportableFolder = {
+				id: 'child1',
+				name: 'Child',
+				parentFolderId: 'parent1',
+				homeProjectId: 'project1',
+				createdAt: now.toISOString(),
+				updatedAt: now.toISOString(),
+			};
+			fsReadFile.mockResolvedValue(JSON.stringify({ folders: [parentFolder, childFolder] }));
+
+			await service.importFoldersFromWorkFolder(mockUser, mockCandidate);
+
+			expect(folderRepository.update).toHaveBeenCalledWith(
+				{ id: 'parent1' },
+				expect.objectContaining({ parentFolder: null }),
+			);
+			expect(folderRepository.update).toHaveBeenCalledWith(
+				{ id: 'child1' },
+				expect.objectContaining({ parentFolder: { id: 'parent1' } }),
+			);
+		});
+
+		it('should return the imported folders on success', async () => {
+			const now = new Date();
+			const mockProject = Object.assign(new Project(), { id: 'project1' });
+			const mockPersonalProject = Object.assign(new Project(), { id: 'personal1' });
+
+			projectRepository.find.mockResolvedValue([mockProject]);
+			projectRepository.getPersonalProjectForUserOrFail.mockResolvedValue(mockPersonalProject);
+
+			const folder: ExportableFolder = {
+				id: 'folder1',
+				name: 'Folder 1',
+				parentFolderId: null,
+				homeProjectId: 'project1',
+				createdAt: now.toISOString(),
+				updatedAt: now.toISOString(),
+			};
+			fsReadFile.mockResolvedValue(JSON.stringify({ folders: [folder] }));
+
+			const result = await service.importFoldersFromWorkFolder(mockUser, mockCandidate);
+
+			expect(result).toEqual({ folders: [folder] });
+		});
+
+		it('should log an error and return undefined on file read failure', async () => {
+			projectRepository.find.mockResolvedValue([]);
+			projectRepository.getPersonalProjectForUserOrFail.mockResolvedValue(
+				Object.assign(new Project(), { id: 'personal1' }),
+			);
+			fsReadFile.mockRejectedValue(new Error('disk error'));
+
+			const result = await service.importFoldersFromWorkFolder(mockUser, mockCandidate);
+
+			expect(result).toBeUndefined();
+			expect(folderRepository.upsert).not.toHaveBeenCalled();
+		});
 	});
 });
