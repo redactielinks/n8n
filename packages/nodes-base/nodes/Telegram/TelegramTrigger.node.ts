@@ -208,6 +208,23 @@ export class TelegramTrigger implements INodeType {
 				const webhookUrl = this.getNodeWebhookUrl('default');
 
 				if (webhookReturnData.result.url === webhookUrl) {
+					// For nodeVersion > 1, the secret token must be registered with Telegram.
+					// Since getWebhookInfo does not return the secret token, we cannot verify
+					// it matches. Re-register the webhook to ensure the secret token is in sync,
+					// which prevents all incoming messages from being rejected with 403.
+					const nodeVersion = this.getNode().typeVersion;
+					if (nodeVersion > 1) {
+						const secret_token = getSecretToken.call(this);
+						let allowedUpdates = this.getNodeParameter('updates') as string[];
+						if ((allowedUpdates || []).includes('*')) {
+							allowedUpdates = [];
+						}
+						await apiRequest.call(this, 'POST', 'setWebhook', {
+							url: webhookUrl,
+							allowed_updates: allowedUpdates,
+							secret_token,
+						});
+					}
 					return true;
 				}
 
