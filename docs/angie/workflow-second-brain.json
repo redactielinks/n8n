@@ -1,0 +1,248 @@
+{
+  "name": "Angie — Second Brain Command Center",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "id": "aa111111-0000-0000-0000-000000000001",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [220, 300],
+      "webhookId": "angie-second-brain-v1",
+      "credentials": {
+        "telegramApi": {
+          "id": "VERVANG_MET_CREDENTIAL_ID",
+          "name": "Angie Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─── Stap 1: Telegram bericht uitlezen ───────────────────────────────────\nconst message = $input.first().json.message;\nconst text = (message?.text || '').trim();\nconst chatId = String(message?.chat?.id || '');\nconst messageId = message?.message_id;\nconst isVoice = !!message?.voice;\n\n// Voiceberichten worden nog niet verwerkt (vereist Whisper-integratie)\nif (isVoice) {\n  return [{ json: {\n    command: 'voice',\n    content: '',\n    chatId, messageId, isVoice,\n    obsidianContent: '', filepath: '',\n    replyText: '🎙️ Spraakberichten worden nog niet ondersteund. Stuur een tekstbericht of gebruik een van de commando\\'s (stuur /help voor de lijst).',\n    hasPrefix: false\n  }}];\n}\n\nif (!text) {\n  return [{ json: {\n    command: 'leeg', content: '', chatId, messageId, isVoice: false,\n    obsidianContent: '', filepath: '',\n    replyText: 'Leeg bericht ontvangen. Stuur /help voor de beschikbare commando\\'s.',\n    hasPrefix: false\n  }}];\n}\n\n// ─── Stap 2: Help-commando detecteren ─────────────────────────────────────\nif (text === '/help' || text === '/commando' || text === '/start') {\n  return [{ json: {\n    command: 'help', content: '', chatId, messageId, isVoice: false,\n    obsidianContent: '', filepath: '', replyText: '', hasPrefix: false\n  }}];\n}\n\n// ─── Stap 3: Commando-prefix detecteren ───────────────────────────────────\nconst prefixes = [\n  ['/notitie', 'notitie'],\n  ['/note',    'notitie'],\n  ['/taak',    'taak'],\n  ['/todo',    'taak'],\n  ['/task',    'taak'],\n  ['/idee',    'idee'],\n  ['/idea',    'idee'],\n  ['/dagboek', 'dagboek'],\n  ['/journal', 'dagboek'],\n];\n\nlet command = 'vrij';\nlet content = text;\n\nfor (const [prefix, cmd] of prefixes) {\n  if (text.toLowerCase().startsWith(prefix + ' ') || text.toLowerCase() === prefix) {\n    command = cmd;\n    content = text.slice(prefix.length).trim();\n    break;\n  }\n}\n\n// ─── Stap 4: Tijdstempel ──────────────────────────────────────────────────\nconst now = new Date();\nconst pad = n => String(n).padStart(2, '0');\nconst timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;\nconst fileTs = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;\n\n// ─── Stap 5: Obsidian-inhoud bouwen voor bekende commando's ───────────────\nif (command !== 'vrij') {\n  const tagMap = { notitie: 'notitie', taak: 'taak', idee: 'idee', dagboek: 'dagboek' };\n  const tag = tagMap[command];\n\n  let bodyContent;\n  if (command === 'taak') {\n    bodyContent = `- [ ] ${content}`;\n  } else if (command === 'dagboek') {\n    bodyContent = content;\n  } else {\n    bodyContent = content;\n  }\n\n  const obsidianContent = `---\\ntags:\\n  - ${tag}\\n  - telegram\\ndatum: ${timestamp}\\nbron: telegram\\n---\\n\\n${bodyContent}`;\n  const filepath = `/home/node/obsidian-share/inbox/${fileTs}-${command}.md`;\n\n  const labels = {\n    notitie: 'Notitie opgeslagen',\n    taak: 'Taak toegevoegd ✓',\n    idee: 'Idee opgeslagen',\n    dagboek: 'Dagboek bijgewerkt'\n  };\n  const preview = content.length > 60 ? content.substring(0, 60) + '...' : content;\n  const replyText = `${labels[command]}: \"${preview}\"`;\n\n  return [{ json: {\n    command, content, chatId, messageId, timestamp, fileTs,\n    obsidianContent, filepath, replyText, hasPrefix: true\n  }}];\n}\n\n// Vrije tekst → door naar LLM\nreturn [{ json: {\n  command: 'vrij', content, chatId, messageId, timestamp, fileTs,\n  obsidianContent: '', filepath: '', replyText: '', hasPrefix: false\n}}];"
+      },
+      "id": "aa111111-0000-0000-0000-000000000002",
+      "name": "Parse Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-help-001",
+              "leftValue": "={{ $json.command }}",
+              "rightValue": "help",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "aa111111-0000-0000-0000-000000000003",
+      "name": "Is Help Command?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "=<b>🧠 Angie — Second Brain</b>\n\nHier zijn je beschikbare commando's:\n\n<b>Directe commando's:</b>\n• <code>/notitie [tekst]</code> — sla een snelle notitie op\n• <code>/taak [tekst]</code> — voeg een taak toe\n• <code>/idee [tekst]</code> — bewaar een idee\n• <code>/dagboek [tekst]</code> — schrijf een dagboek-entry\n\n<b>Vrije tekst:</b>\nStuur gewoon een bericht zonder prefix — de AI classificeert en structureert het automatisch.\n\n<b>Obsidian locatie:</b>\nAlle notities worden opgeslagen in <code>/inbox/</code> met timestamp en categorie in de bestandsnaam.\n\n<b>Voorbeelden:</b>\n• <code>/taak rapport afmaken voor vrijdag</code>\n• <code>/idee app bouwen voor habit tracking</code>\n• Ik heb net nagedacht over de aanpak van project X...",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "aa111111-0000-0000-0000-000000000004",
+      "name": "Telegram: Help Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [940, 100],
+      "credentials": {
+        "telegramApi": {
+          "id": "VERVANG_MET_CREDENTIAL_ID",
+          "name": "Angie Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-prefix-001",
+              "leftValue": "={{ $json.hasPrefix }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "aa111111-0000-0000-0000-000000000005",
+      "name": "Has Command Prefix?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [940, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://100.99.111.39:27124/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"local-model\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Je bent een Second Brain assistent. Classificeer en structureer de gebruikersinput als een Obsidian-notitie. Geef je antwoord UITSLUITEND als geldig JSON in dit formaat: {\\\"category\\\": \\\"notitie|taak|idee|dagboek\\\", \\\"title\\\": \\\"korte beschrijvende titel\\\", \\\"content\\\": \\\"gestructureerde markdown inhoud van de notitie\\\", \\\"tags\\\": [\\\"relevante\\\", \\\"tags\\\"]}. Geen uitleg, geen tekst buiten het JSON-object.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"{{ $json.content }}\"\n    }\n  ],\n  \"stream\": false,\n  \"temperature\": 0.3\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "aa111111-0000-0000-0000-000000000006",
+      "name": "LLM: Classificeer & Structureer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1180, 460]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Haal LLM response op\nconst llmRaw = $input.first().json;\n\n// Ondersteuning voor OpenAI-compatible EN Ollama API-formaat\nlet responseText = '';\nif (llmRaw.choices?.[0]?.message?.content) {\n  responseText = llmRaw.choices[0].message.content; // OpenAI-compatible (LM Studio etc.)\n} else if (llmRaw.response) {\n  responseText = llmRaw.response; // Ollama /api/generate formaat\n} else if (llmRaw.message?.content) {\n  responseText = llmRaw.message.content; // Ollama /api/chat formaat\n} else {\n  responseText = JSON.stringify(llmRaw);\n}\n\n// Originele context ophalen uit Parse Command\nconst original = $('Parse Command').first().json;\nconst { timestamp, fileTs, chatId, messageId, content } = original;\n\n// JSON extraheren uit LLM response\nlet parsed = null;\ntry {\n  const cleaned = responseText.replace(/```json\\s*/gi, '').replace(/```\\s*/g, '').trim();\n  const jsonMatch = cleaned.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    parsed = JSON.parse(jsonMatch[0]);\n  }\n} catch(e) {\n  parsed = null;\n}\n\n// Fallback als JSON-parsing mislukt\nconst category = parsed?.category || 'notitie';\nconst title = (parsed?.title || content.substring(0, 50)).replace(/[/\\\\<>:|?*\"]/g, '-');\nconst formattedContent = parsed?.content || content;\nconst tags = Array.isArray(parsed?.tags) ? parsed.tags : [category, 'telegram'];\n\n// Obsidian markdown bouwen\nconst tagsYaml = tags.map(t => `  - ${t}`).join('\\n');\nconst obsidianContent = `---\\ntitel: ${title}\\ntags:\\n${tagsYaml}\\ndatum: ${timestamp}\\nbron: telegram\\ncategorie: ${category}\\n---\\n\\n# ${title}\\n\\n${formattedContent}`;\nconst filepath = `/home/node/obsidian-share/inbox/${fileTs}-${category}.md`;\n\nconst preview = title.length > 50 ? title.substring(0, 50) + '...' : title;\nconst replyText = `[${category.toUpperCase()}] Opgeslagen: \"<b>${preview}</b>\"`;\n\nreturn [{ json: {\n  ...original,\n  obsidianContent,\n  filepath,\n  replyText,\n  category,\n  title\n}}];"
+      },
+      "id": "aa111111-0000-0000-0000-000000000007",
+      "name": "Parse LLM Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1420, 460]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Converteer tekst naar binary zodat Write File het kan wegschrijven\nconst item = $input.first();\nconst { obsidianContent, filepath } = item.json;\n\nif (!obsidianContent || !filepath) {\n  throw new Error(`Ontbrekende data: obsidianContent=${!!obsidianContent}, filepath=${!!filepath}`);\n}\n\n// Zorg dat de directory bestaat (n8n schrijft niet automatisch directories aan)\n// filepath voorbeeld: /home/node/obsidian-share/inbox/20240615120000-notitie.md\n\nconst binaryData = await this.helpers.prepareBinaryData(\n  Buffer.from(obsidianContent, 'utf8'),\n  'note.md',\n  'text/markdown'\n);\n\nreturn [{\n  json: item.json,\n  binary: {\n    data: binaryData\n  }\n}];"
+      },
+      "id": "aa111111-0000-0000-0000-000000000008",
+      "name": "Prepare Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1660, 300]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ $json.filepath }}",
+        "dataPropertyName": "data",
+        "options": {}
+      },
+      "id": "aa111111-0000-0000-0000-000000000009",
+      "name": "Write to Obsidian",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1900, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.replyText }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "aa111111-0000-0000-0000-000000000010",
+      "name": "Telegram: Bevestiging",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2140, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "VERVANG_MET_CREDENTIAL_ID",
+          "name": "Angie Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [{ "node": "Parse Command", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse Command": {
+      "main": [
+        [{ "node": "Is Help Command?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Is Help Command?": {
+      "main": [
+        [{ "node": "Telegram: Help Message", "type": "main", "index": 0 }],
+        [{ "node": "Has Command Prefix?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Has Command Prefix?": {
+      "main": [
+        [{ "node": "Prepare Binary", "type": "main", "index": 0 }],
+        [{ "node": "LLM: Classificeer & Structureer", "type": "main", "index": 0 }]
+      ]
+    },
+    "LLM: Classificeer & Structureer": {
+      "main": [
+        [{ "node": "Parse LLM Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse LLM Response": {
+      "main": [
+        [{ "node": "Prepare Binary", "type": "main", "index": 0 }]
+      ]
+    },
+    "Prepare Binary": {
+      "main": [
+        [{ "node": "Write to Obsidian", "type": "main", "index": 0 }]
+      ]
+    },
+    "Write to Obsidian": {
+      "main": [
+        [{ "node": "Telegram: Bevestiging", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "tags": [
+    { "name": "angie" },
+    { "name": "second-brain" },
+    { "name": "telegram" }
+  ],
+  "pinData": {},
+  "versionId": "angie-second-brain-v1.0.0"
+}
