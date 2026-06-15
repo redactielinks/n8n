@@ -33,6 +33,7 @@ docker run -d \
     -v /home/redactielinks/n8n-obsidian-share:/home/node/obsidian-share \
     -e N8N_SECURE_COOKIE=false \
     -e WEBHOOK_URL="${WEBHOOK_URL}" \
+    -e NODE_FUNCTION_ALLOW_BUILTIN=fs,path \
     n8nio/n8n:latest
 
 echo "n8n gestart. Bereikbaar op:"
