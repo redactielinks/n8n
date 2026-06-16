@@ -40,7 +40,7 @@ OUTPUT = "/tmp/sec-modified.json"
 
 # ── JavaScript: idee opslaan in Obsidian ──────────────────
 IDEE_JS = r"""
-const meta = $('Verwerk metadata').first().json;
+const meta = $input.first().json;
 const fs = require('fs');
 const path = require('path');
 const VAULT = '/home/node/obsidian-share';
