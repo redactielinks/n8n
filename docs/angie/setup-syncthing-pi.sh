@@ -1,131 +1,56 @@
 #!/bin/bash
-# ============================================================
-# Project Angie — Syncthing installeren op Raspberry Pi 5
-# Synchroniseert Obsidian vault naar MacBook via Tailscale
-# Voer uit OP de Pi 5: ssh redactielinks@100.77.5.104
-# ============================================================
-
+# Syncthing installeren op de Pi voor Obsidian vault sync
 set -euo pipefail
 
-VAULT="/home/redactielinks/n8n-obsidian-share"
-GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
-log()  { echo -e "${GREEN}[OK]${NC} $1"; }
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+ok()   { echo -e "${GREEN}[OK]${NC} $1"; }
 warn() { echo -e "${YELLOW}[LET OP]${NC} $1"; }
-info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 
-echo ""
-echo "============================================================"
-echo "  Project Angie — Syncthing Setup (Pi 5)"
-echo "============================================================"
-echo ""
+VAULT="/home/redactielinks/n8n-obsidian-share"
+USER="$(whoami)"
 
-# ── Installatie ─────────────────────────────────────────────
-info "Syncthing installeren..."
+echo "" && echo "============================================================"
+echo "  Syncthing setup — Raspberry Pi 5" && echo "============================================================" && echo ""
 
-if command -v syncthing >/dev/null 2>&1; then
-    log "Syncthing is al geïnstalleerd: $(syncthing --version | head -1)"
-else
-    # Officiële Syncthing APT repo
-    curl -fsSL https://syncthing.net/release-key.gpg \
-        | sudo gpg --dearmor -o /usr/share/keyrings/syncthing-archive-keyring.gpg
+curl -fsSL https://syncthing.net/release-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/syncthing-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/syncthing-archive-keyring.gpg] https://apt.syncthing.net/ syncthing stable" | sudo tee /etc/apt/sources.list.d/syncthing.list > /dev/null
+sudo apt-get update -qq && sudo apt-get install -y syncthing
+ok "Syncthing geïnstalleerd"
 
-    echo "deb [signed-by=/usr/share/keyrings/syncthing-archive-keyring.gpg] \
-https://apt.syncthing.net/ syncthing stable" \
-        | sudo tee /etc/apt/sources.list.d/syncthing.list >/dev/null
+sudo systemctl enable "syncthing@${USER}" --now
+echo "Wacht 8 seconden op opstart..." && sleep 8
+ok "Syncthing actief"
 
-    sudo apt-get update -qq && sudo apt-get install -y syncthing
-    log "Syncthing geïnstalleerd: $(syncthing --version | head -1)"
-fi
-
-# ── Systemd user service ─────────────────────────────────────
-info "Syncthing als systemd user-service inschakelen..."
-
-systemctl --user enable syncthing 2>/dev/null || true
-systemctl --user start syncthing 2>/dev/null || true
-
-# Wacht even tot Syncthing opstart en config genereert
-sleep 4
-
-if systemctl --user is-active --quiet syncthing; then
-    log "Syncthing draait als achtergrondservice."
-else
-    warn "Syncthing-service start niet automatisch. Probeer:"
-    warn "  export XDG_RUNTIME_DIR=/run/user/\$(id -u)"
-    warn "  systemctl --user enable syncthing && systemctl --user start syncthing"
-fi
-
-# ── Device ID ophalen ────────────────────────────────────────
-info "Syncthing Device ID ophalen..."
-
-DEVICE_ID=$(syncthing --device-id 2>/dev/null || \
-    grep -o 'deviceID="[^"]*"' ~/.config/syncthing/config.xml 2>/dev/null | head -1 | cut -d'"' -f2 || \
-    echo "NIET GEVONDEN — controleer: syncthing --device-id")
-
-log "Pi 5 Syncthing Device ID:"
-echo ""
-echo "  ┌──────────────────────────────────────────────────────┐"
-echo "  │  $DEVICE_ID  │"
-echo "  └──────────────────────────────────────────────────────┘"
-echo ""
-
-# ── Syncthing Web UI bereikbaar via Tailscale ───────────────
-TAILSCALE_IP="100.77.5.104"
-
-info "Syncthing Web UI configureren voor toegang via Tailscale..."
-
-CONFIG="$HOME/.config/syncthing/config.xml"
-
-if [[ -f "$CONFIG" ]]; then
-    # Verander GUI bind address van 127.0.0.1 naar 0.0.0.0 zodat
-    # je de UI kunt bereiken via Tailscale IP
-    if grep -q '127.0.0.1:8384' "$CONFIG" 2>/dev/null; then
-        sed -i 's/127.0.0.1:8384/0.0.0.0:8384/' "$CONFIG"
-        systemctl --user restart syncthing 2>/dev/null || true
-        sleep 2
-        log "Syncthing UI nu bereikbaar via: http://$TAILSCALE_IP:8384"
-    else
-        log "Syncthing UI al geconfigureerd voor extern toegang."
+for CFG in "$HOME/.local/share/syncthing/config.xml" "$HOME/.config/syncthing/config.xml"; do
+    if [ -f "$CFG" ]; then
+        sed -i 's|<address>127\.0\.0\.1:8384</address>|<address>0.0.0.0:8384</address>|g' "$CFG"
+        sed -i 's|<user>[^<]*</user>||g' "$CFG"
+        sed -i 's|<password>[^<]*</password>||g' "$CFG"
+        sudo systemctl restart "syncthing@${USER}" && sleep 4
+        ok "Web UI opgesteld op 0.0.0.0:8384 (config: $CFG)"
+        break
     fi
-else
-    warn "Config nog niet gevonden. Wacht 10 seconden en herstart het script."
-fi
+done
 
-# ── Overzicht en volgende stappen ────────────────────────────
+mkdir -p "${VAULT}" && chmod -R 777 "${VAULT}"
+
+DEVICE_ID=$(syncthing --device-id 2>/dev/null)
+TAILSCALE_IP=$(tailscale ip -4 2>/dev/null | head -1)
+
 echo ""
 echo "============================================================"
-echo -e "${GREEN}  SYNCTHING KLAAR OP PI 5${NC}"
+echo "  Pi Device ID:"
+echo "  ${DEVICE_ID}"
+echo ""
+echo "  Syncthing Web UI (Safari + Tailscale VPN aan):"
+echo "  http://${TAILSCALE_IP}:8384"
 echo "============================================================"
 echo ""
-echo "  Syncthing UI (Pi 5):  http://$TAILSCALE_IP:8384"
-echo "  Pi 5 Device ID:       $DEVICE_ID"
-echo ""
-echo "  ─────────────────────────────────────────────────────────"
-echo "  HANDMATIGE STAPPEN — doe dit op je MacBook:"
-echo "  ─────────────────────────────────────────────────────────"
-echo ""
-echo "  1. Installeer Syncthing op MacBook:"
-echo "     brew install syncthing"
-echo "     brew services start syncthing"
-echo "     → UI: http://localhost:8384"
-echo ""
-echo "  2. Voeg de Pi 5 toe als 'Remote Device' in MacBook Syncthing UI:"
-echo "     → Klik 'Add Remote Device'"
-echo "     → Device ID: $DEVICE_ID"
-echo "     → Device Name: Pi5-n8n"
-echo ""
-echo "  3. Open Syncthing UI op Pi 5: http://$TAILSCALE_IP:8384"
-echo "     → Klik 'Add Folder'"
-echo "     → Folder ID: obsidian-vault"
-echo "     → Folder Path: $VAULT"
-echo "     → Vink de MacBook aan als 'Share With'"
-echo ""
-echo "  4. Accepteer de folder op je MacBook Syncthing UI"
-echo "     → Kies als lokaal pad: ~/ObsidianVault  (of bestaand vault-pad)"
-echo "     → Klik 'Add'"
-echo ""
-echo "  5. Open Obsidian op MacBook → 'Open folder as vault'"
-echo "     → Selecteer ~/ObsidianVault (of waar je de map hebt ingesteld)"
-echo ""
-echo "  Sync werkt via Tailscale (100.77.5.104 ↔ 100.111.45.105)"
-echo "  Bestanden syncronen zodra beide apparaten online zijn."
+echo "  Stappen:"
+echo "  1. Open Möbius Sync op iPhone → kopieer iPhone Device ID"
+echo "  2. Ga naar http://${TAILSCALE_IP}:8384 in Safari"
+echo "  3. Add Remote Device → plak iPhone Device ID"
+echo "  4. Add Folder → pad: ${VAULT} → vink iPhone aan"
+echo "  5. Möbius Sync: accepteer uitnodiging → kies 'Möbius Sync' map"
+echo "  6. Obsidian iPhone → Open vault from Files → Möbius Sync map"
 echo ""
