@@ -21,25 +21,72 @@ const chatId = String($('Listen for incoming events').first().json?.message?.fro
 const fs = require('fs');
 const path = require('path');
 const VAULT = '/home/node/obsidian-share';
+const LLM_URL = 'http://100.68.46.126:27124/v1/chat/completions';
+
 const now = new Date();
 const pad = n => String(n).padStart(2, '0');
 const dateStr = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate());
 const timestamp = dateStr + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
 const fileTs = String(now.getFullYear()) + pad(now.getMonth()+1) + pad(now.getDate()) + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
 
+// Lokale LLM aanroepen voor metadata
+let titel = ideeTekst.substring(0, 60);
+let samenvatting = '';
+let categorie = 'Projecten';
+let prioriteit = 'Normaal';
+let tags = ['idee', 'telegram'];
+
+try {
+  const llmRes = await fetch(LLM_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'local-model',
+      messages: [{
+        role: 'system',
+        content: 'Antwoord uitsluitend als JSON (geen markdown). Velden: {"titel":"max 60 tekens","samenvatting":"2-3 zinnen","categorie":"Projecten|Zakelijk|Uitvinding|Levensstijl|Kopen|Reizen|Lezen|Gezondheid|Financien","prioriteit":"Laag|Normaal|Hoog","tags":["3-5 trefwoorden"]}'
+      }, {
+        role: 'user',
+        content: 'Brainstormidee: ' + ideeTekst
+      }],
+      stream: false,
+      temperature: 0.3
+    })
+  });
+  const llmData = await llmRes.json();
+  const content = llmData?.choices?.[0]?.message?.content || '{}';
+  const meta = JSON.parse(content.replace(/```json\n?|\n?```/g, '').trim());
+  if (meta.titel)       titel       = String(meta.titel).substring(0, 60);
+  if (meta.samenvatting) samenvatting = String(meta.samenvatting);
+  if (meta.categorie)   categorie   = String(meta.categorie);
+  if (meta.prioriteit)  prioriteit  = String(meta.prioriteit);
+  if (Array.isArray(meta.tags)) tags = meta.tags.concat(['idee', 'telegram']);
+} catch(e) {
+  // LLM niet beschikbaar: sla op zonder verrijking
+}
+
 const dir = path.join(VAULT, 'Inbox');
 if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
+const tagLines = tags.map(t => '  - ' + t).join('\n');
 const lines = [
-  '---', 'tags:', '  - idee', '  - telegram',
+  '---', 'tags:', tagLines,
+  'titel: ' + titel,
+  'categorie: ' + categorie,
+  'prioriteit: ' + prioriteit,
   'datum: ' + timestamp, 'bron: telegram', '---', '',
-  '# Idee', '', ideeTekst, '',
+  '# ' + titel, '',
+  samenvatting || ideeTekst, '',
+  samenvatting ? ('\n## Origineel\n\n' + ideeTekst) : '',
 ].join('\n');
 
 fs.writeFileSync(path.join(dir, fileTs + '-idee.md'), lines, 'utf8');
 
-const preview = ideeTekst.length > 60 ? ideeTekst.substring(0, 60) + '...' : ideeTekst;
-return [{ json: { chatId, replyText: '✅ Idee opgeslagen:\n"' + preview + '"' } }];
+const preview = titel.length > 60 ? titel.substring(0, 60) + '...' : titel;
+const replyText = '✅ Idee opgeslagen in Obsidian:\n*' + preview + '*' +
+  (samenvatting ? '\n\n' + samenvatting.substring(0, 120) : '');
+
+return [{ json: { chatId, replyText } }];
 """.strip()
 
 with open('/tmp/sec.json', encoding='utf-8') as f:
