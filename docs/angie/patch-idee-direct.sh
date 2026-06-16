@@ -14,9 +14,10 @@ python3 - <<'PYEOF'
 import json
 
 EXTRAHEER_JS = r"""
-const text = $input.first().json.text || '';
+const inp = $input.first().json;
+const text = inp.text || inp.message?.text || '';
 const ideeTekst = text.replace(/^\/?idee[,\s]+/i, '').trim();
-const chatId = String($('Listen for incoming events').first().json?.message?.from?.id || 7319477310);
+const chatId = String(inp.message?.from?.id || inp.chatId || 7319477310);
 
 const fs = require('fs');
 const path = require('path');
@@ -110,11 +111,10 @@ for node in wf['nodes']:
         print("  ~ Bevestig opslaan: leest uit $json")
 
 conn = wf.setdefault('connections', {})
-if 'Extraheer idee' in conn:
-    conn['Extraheer idee'] = {
-        'main': [[{'node': 'Bevestig opslaan', 'type': 'main', 'index': 0}]]
-    }
-    print("  ~ Verbinding: Extraheer idee → Bevestig opslaan (OpenRouter geskipt)")
+conn['Extraheer idee'] = {
+    'main': [[{'node': 'Bevestig opslaan', 'type': 'main', 'index': 0}]]
+}
+print("  ~ Verbinding: Extraheer idee → Bevestig opslaan (OpenRouter geskipt)")
 
 with open('/tmp/sec-modified.json', 'w', encoding='utf-8') as f:
     json.dump([wf], f, ensure_ascii=False, indent=2)
