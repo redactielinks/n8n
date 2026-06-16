@@ -37,7 +37,10 @@ let prioriteit = 'Normaal';
 let tags = ['idee', 'telegram'];
 
 try {
+  const controller = new AbortController();
+  const llmTimeout = setTimeout(() => controller.abort(), 45000);
   const llmRes = await fetch(LLM_URL, {
+    signal: controller.signal,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -53,6 +56,7 @@ try {
       temperature: 0.3
     })
   });
+  clearTimeout(llmTimeout);
   const llmData = await llmRes.json();
   const content = llmData?.choices?.[0]?.message?.content || '{}';
   const meta = JSON.parse(content.replace(/```json\n?|\n?```/g, '').trim());
