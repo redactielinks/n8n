@@ -15,7 +15,16 @@ OUTPUT = "/tmp/sec-modified.json"
 with open(INPUT, encoding="utf-8") as f:
     data = json.load(f)
 
-wf = data[0] if isinstance(data, list) else data
+# Zoek specifiek de Secretaresse workflow op ID (niet data[0] — export bevat 41 workflows)
+wf = None
+for _w in (data if isinstance(data, list) else [data]):
+    if _w.get("id") == "YdNGeswnhhzFdTFy" or "Secretaresse" in _w.get("name", ""):
+        wf = _w
+        break
+if wf is None:
+    print("ERROR: Secretaresse workflow niet gevonden in export!")
+    sys.exit(1)
+print(f"Gevonden: {wf['name']} ({wf['id']})")
 
 # ── JavaScript voor de Obsidian handler ───────────────────────────────────────
 OBSIDIAN_JS = r"""
@@ -211,7 +220,7 @@ for node in wf["nodes"]:
             print("  ~ Help-tekst uitgebreid met Obsidian-commando's")
 
 # ── Opslaan ───────────────────────────────────────────────────────────────────
-output = data if isinstance(data, list) else [wf]
+output = [wf]  # alleen de Secretaresse workflow importeren
 with open(OUTPUT, "w", encoding="utf-8") as f:
     json.dump(output, f, ensure_ascii=False, indent=2)
 
