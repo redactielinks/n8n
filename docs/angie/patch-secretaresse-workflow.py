@@ -116,7 +116,7 @@ new_nodes = [
                     {"id": "obs-note",    "leftValue": "={{ ($json.text || '').toLowerCase() }}", "rightValue": "/note",    "operator": {"type": "string", "operation": "startsWith"}},
                     {"id": "obs-dagboek", "leftValue": "={{ ($json.text || '').toLowerCase() }}", "rightValue": "/dagboek", "operator": {"type": "string", "operation": "startsWith"}},
                     {"id": "obs-journal", "leftValue": "={{ ($json.text || '').toLowerCase() }}", "rightValue": "/journal", "operator": {"type": "string", "operation": "startsWith"}},
-                    {"id": "obs-zoek",    "leftValue": "="{{ ($json.text || '').toLowerCase() }}", "rightValue": "/zoek",    "operator": {"type": "string", "operation": "startsWith"}},
+                    {"id": "obs-zoek",    "leftValue": "={{ ($json.text || '').toLowerCase() }}", "rightValue": "/zoek",    "operator": {"type": "string", "operation": "startsWith"}},
                     {"id": "obs-find",    "leftValue": "={{ ($json.text || '').toLowerCase() }}", "rightValue": "/find",    "operator": {"type": "string", "operation": "startsWith"}},
                 ],
                 "combinator": "or"
