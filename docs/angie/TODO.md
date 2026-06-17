@@ -30,8 +30,9 @@ klaarstaat, zodat oppakken straks één commando is.
   aan Substacks backend). Eerste stap: die cookie ophalen uit de
   Netwerk-tab van desktop-browser-devtools (F12); dit is niet mogelijk
   vanaf de iPhone alleen, de cookie is HttpOnly en dus onzichtbaar voor
-  gewone JavaScript-trucjes. Nog geen script: wachten op desktop-browser-
-  toegang (bijv. via een scherm op de Mac Mini) om de cookie op te halen.
+  gewone JavaScript-trucjes. Nog geen script: wachten op toegang tot een
+  desktop-browser (bijv. via een scherm op de Mac Mini) om de cookie op te
+  halen.
 
 ## Afgerond
 
