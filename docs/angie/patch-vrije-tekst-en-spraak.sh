@@ -29,24 +29,31 @@ const path = require('path');
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
-const { Buffer } = require('buffer');
 
 const TELEGRAM_TOKEN = '8622180504:AAF-WK0seg3n8I4VGUS5xo_dQgw9PXGVyUU';
 const LLM_URL = 'http://100.68.46.126:27124/v1/chat/completions';
 const WHISPER_URL = 'http://100.68.46.126:27125/transcribe';
 const SEARX_BASE = 'http://100.77.5.104:8081/search?format=json&q=';
 
+// Buffer is hier niet beschikbaar (bleek eerder al bij de /onderzoek-fix).
+// Voor binaire audio gebruiken we daarom 'binary' (latin1) string-encoding:
+// elke byte komt 1-op-1 overeen met een char code 0-255, dus dat is
+// lossless zonder ooit de Buffer-API aan te raken.
 function httpRequest(opts) {
   return new Promise((resolve, reject) => {
     const u = new URL(opts.url);
     const lib = u.protocol === 'https:' ? https : http;
-    const isBuffer = Buffer.isBuffer(opts.body);
-    const bodyBuf = isBuffer ? opts.body : (opts.body !== undefined ? Buffer.from(JSON.stringify(opts.body), 'utf8') : undefined);
-    const headers = Object.assign({}, opts.headers || {});
-    if (bodyBuf && !headers['Content-Type']) {
-      headers['Content-Type'] = isBuffer ? 'application/octet-stream' : 'application/json';
+    const isBinaryBody = typeof opts.body === 'string' && opts.bodyEncoding === 'binary';
+    let bodyStr;
+    if (isBinaryBody) {
+      bodyStr = opts.body;
+    } else if (opts.body !== undefined) {
+      bodyStr = JSON.stringify(opts.body);
     }
-    if (bodyBuf) headers['Content-Length'] = String(bodyBuf.length);
+    const headers = Object.assign({}, opts.headers || {});
+    if (bodyStr !== undefined && !headers['Content-Type']) {
+      headers['Content-Type'] = isBinaryBody ? 'application/octet-stream' : 'application/json';
+    }
     const req = lib.request({
       hostname: u.hostname,
       port: u.port || (u.protocol === 'https:' ? 443 : 80),
@@ -54,27 +61,26 @@ function httpRequest(opts) {
       method: opts.method || 'GET',
       headers,
     }, (res) => {
-      const chunks = [];
-      res.on('data', chunk => { chunks.push(chunk); });
+      res.setEncoding(opts.binary ? 'binary' : 'utf8');
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
       res.on('end', () => {
-        const buf = Buffer.concat(chunks);
         if (res.statusCode >= 400) {
-          reject(new Error('HTTP ' + res.statusCode + ': ' + buf.toString('utf8').slice(0, 200)));
+          reject(new Error('HTTP ' + res.statusCode + ': ' + data.slice(0, 200)));
           return;
         }
-        if (opts.binary) { resolve(buf); return; }
-        const dataStr = buf.toString('utf8');
+        if (opts.binary) { resolve(data); return; }
         if (opts.json) {
-          try { resolve(JSON.parse(dataStr)); }
-          catch (e) { reject(new Error('Geen geldige JSON: ' + dataStr.slice(0, 200))); }
+          try { resolve(JSON.parse(data)); }
+          catch (e) { reject(new Error('Geen geldige JSON: ' + data.slice(0, 200))); }
         } else {
-          resolve(dataStr);
+          resolve(data);
         }
       });
     });
     req.on('error', reject);
     req.setTimeout(opts.timeout || 30000, () => req.destroy(new Error('Timeout na ' + (opts.timeout || 30000) + 'ms')));
-    if (bodyBuf) req.write(bodyBuf);
+    if (bodyStr !== undefined) req.write(bodyStr, isBinaryBody ? 'binary' : 'utf8');
     req.end();
   });
 }
@@ -98,13 +104,13 @@ if (!text && voice && voice.file_id) {
       json: true, timeout: 15000,
     });
     const filePath = fileInfo?.result?.file_path;
-    const audioBuffer = await httpRequest({
+    const audioData = await httpRequest({
       url: 'https://api.telegram.org/file/bot' + TELEGRAM_TOKEN + '/' + filePath,
       binary: true, timeout: 20000,
     });
     const transcriptData = await httpRequest({
       method: 'POST', url: WHISPER_URL,
-      body: audioBuffer, json: true, timeout: 60000,
+      body: audioData, bodyEncoding: 'binary', json: true, timeout: 60000,
     });
     text = (transcriptData.text || '').trim();
     viaSpraak = true;
@@ -587,7 +593,7 @@ docker run -d --name n8n --restart always -p 5678:5678 \
     -v /home/redactielinks/n8n-obsidian-share:/home/node/obsidian-share \
     -e N8N_SECURE_COOKIE=false \
     -e WEBHOOK_URL="${WEBHOOK_URL}" \
-    -e NODE_FUNCTION_ALLOW_BUILTIN=fs,path,http,https,url,buffer \
+    -e NODE_FUNCTION_ALLOW_BUILTIN=fs,path,http,https,url \
     n8nio/n8n:latest
 tailscale funnel --bg 5678 2>/dev/null || sudo tailscale funnel --bg 5678 2>/dev/null || true
 sleep 8 && docker logs n8n --tail 3
