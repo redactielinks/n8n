@@ -24,6 +24,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const https = require('https');
+const { URL } = require('url');
 
 function httpRequest(opts) {
   return new Promise((resolve, reject) => {
@@ -33,7 +34,6 @@ function httpRequest(opts) {
     const headers = Object.assign({}, opts.headers || {});
     if (bodyStr) {
       headers['Content-Type'] = headers['Content-Type'] || 'application/json';
-      headers['Content-Length'] = Buffer.byteLength(bodyStr);
     }
     const req = lib.request({
       hostname: u.hostname,
@@ -389,7 +389,7 @@ docker run -d --name n8n --restart always -p 5678:5678 \
     -v /home/redactielinks/n8n-obsidian-share:/home/node/obsidian-share \
     -e N8N_SECURE_COOKIE=false \
     -e WEBHOOK_URL="${WEBHOOK_URL}" \
-    -e NODE_FUNCTION_ALLOW_BUILTIN=fs,path,http,https \
+    -e NODE_FUNCTION_ALLOW_BUILTIN=fs,path,http,https,url \
     n8nio/n8n:latest
 tailscale funnel --bg 5678 2>/dev/null || sudo tailscale funnel --bg 5678 2>/dev/null || true
 sleep 8 && docker logs n8n --tail 3
