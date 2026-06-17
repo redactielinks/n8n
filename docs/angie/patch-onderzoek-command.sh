@@ -68,13 +68,11 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
   let tags = ['idee', 'telegram'];
 
   try {
-    const controller = new AbortController();
-    const llmTimeout = setTimeout(() => controller.abort(), 45000);
-    const llmRes = await fetch(LLM_URL, {
-      signal: controller.signal,
+    const llmData = await $helpers.httpRequest({
       method: 'POST',
+      url: LLM_URL,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body: {
         model: 'google/gemma-3-4b',
         messages: [{
           role: 'system',
@@ -85,10 +83,10 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
         }],
         stream: false,
         temperature: 0.3
-      })
+      },
+      json: true,
+      timeout: 45000,
     });
-    clearTimeout(llmTimeout);
-    const llmData = await llmRes.json();
     const llmContent = llmData?.choices?.[0]?.message?.content || '{}';
     const meta = JSON.parse(llmContent.replace(/```json\n?|\n?```/g, '').trim());
     if (meta.titel)        titel        = String(meta.titel).substring(0, 60);
@@ -165,27 +163,29 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
     const WIKI_API = 'https://api.github.com/repos/redactielinks/n8n/contents/kennisbank/wiki?ref=claude/angie-https-tunnel-foss-hfqqzl';
     const LLM_URL = 'http://100.68.46.126:27124/v1/chat/completions';
     try {
-      const listRes = await fetch(WIKI_API, { headers: { 'User-Agent': 'angie-bot' } });
-      const listing = await listRes.json();
+      const listing = await $helpers.httpRequest({
+        method: 'GET',
+        url: WIKI_API,
+        headers: { 'User-Agent': 'angie-bot' },
+        json: true,
+        timeout: 15000,
+      });
       const files = Array.isArray(listing) ? listing.filter(f => f.name.endsWith('.md')) : [];
 
       let wikiText = '';
       for (const f of files) {
-        const fileRes = await fetch(f.download_url);
-        const fileTxt = await fileRes.text();
+        const fileTxt = await $helpers.httpRequest({ method: 'GET', url: f.download_url, timeout: 15000 });
         wikiText += '\n\n## ' + f.name + '\n\n' + fileTxt;
       }
 
       if (!wikiText.trim()) {
         replyText = 'De wiki is nog leeg.';
       } else {
-        const controller = new AbortController();
-        const llmTimeout = setTimeout(() => controller.abort(), 45000);
-        const llmRes = await fetch(LLM_URL, {
-          signal: controller.signal,
+        const llmData = await $helpers.httpRequest({
           method: 'POST',
+          url: LLM_URL,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          body: {
             model: 'google/gemma-3-4b',
             messages: [{
               role: 'system',
@@ -196,14 +196,14 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
             }],
             stream: false,
             temperature: 0.3
-          })
+          },
+          json: true,
+          timeout: 45000,
         });
-        clearTimeout(llmTimeout);
-        const llmData = await llmRes.json();
         replyText = llmData?.choices?.[0]?.message?.content || 'Geen antwoord ontvangen van het model.';
       }
     } catch(e) {
-      replyText = 'Wiki niet doorzoekbaar nu. Controleer of LM Studio draait op de Mac Mini, of dat GitHub bereikbaar is.';
+      replyText = 'Wiki niet doorzoekbaar nu (' + e.message + '). Controleer of LM Studio draait op de Mac Mini, of dat GitHub bereikbaar is.';
     }
   }
 
@@ -214,8 +214,12 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
     const SEARX_URL = 'http://100.77.5.104:8081/search?format=json&q=' + encodeURIComponent(content);
     const LLM_URL = 'http://100.68.46.126:27124/v1/chat/completions';
     try {
-      const searchRes = await fetch(SEARX_URL);
-      const searchData = await searchRes.json();
+      const searchData = await $helpers.httpRequest({
+        method: 'GET',
+        url: SEARX_URL,
+        json: true,
+        timeout: 15000,
+      });
       const results = (searchData.results || []).slice(0, 8).map(r => ({
         titel: r.title || '', url: r.url || '', samenvatting: r.content || ''
       }));
@@ -227,13 +231,11 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
           (i + 1) + '. ' + r.titel + ' (' + r.url + ')\n' + r.samenvatting
         ).join('\n\n');
 
-        const controller = new AbortController();
-        const llmTimeout = setTimeout(() => controller.abort(), 120000);
-        const llmRes = await fetch(LLM_URL, {
-          signal: controller.signal,
+        const llmData = await $helpers.httpRequest({
           method: 'POST',
+          url: LLM_URL,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          body: {
             model: 'google/gemma-3-4b',
             messages: [{
               role: 'system',
@@ -244,10 +246,10 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
             }],
             stream: false,
             temperature: 0.3
-          })
+          },
+          json: true,
+          timeout: 120000,
         });
-        clearTimeout(llmTimeout);
-        const llmData = await llmRes.json();
         replyText = (llmData?.choices?.[0]?.message?.content || 'Geen antwoord ontvangen van het model.') +
           '\n\n(Niet automatisch opgeslagen. Plaats dit zelf in raw/ als je het wilt bewaren.)';
       }
