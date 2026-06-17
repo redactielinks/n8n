@@ -22,6 +22,47 @@ const text = (inp.text || inp.message?.text || '').trim();
 const chatId = String(inp.message?.from?.id || inp.chatId || '7319477310');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+const https = require('https');
+
+function httpRequest(opts) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(opts.url);
+    const lib = u.protocol === 'https:' ? https : http;
+    const bodyStr = opts.body !== undefined ? JSON.stringify(opts.body) : undefined;
+    const headers = Object.assign({}, opts.headers || {});
+    if (bodyStr) {
+      headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+      headers['Content-Length'] = Buffer.byteLength(bodyStr);
+    }
+    const req = lib.request({
+      hostname: u.hostname,
+      port: u.port || (u.protocol === 'https:' ? 443 : 80),
+      path: u.pathname + (u.search || ''),
+      method: opts.method || 'GET',
+      headers,
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        if (res.statusCode >= 400) {
+          reject(new Error('HTTP ' + res.statusCode + ': ' + data.slice(0, 200)));
+          return;
+        }
+        if (opts.json) {
+          try { resolve(JSON.parse(data)); }
+          catch (e) { reject(new Error('Geen geldige JSON: ' + data.slice(0, 200))); }
+        } else {
+          resolve(data);
+        }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(opts.timeout || 30000, () => req.destroy(new Error('Timeout na ' + (opts.timeout || 30000) + 'ms')));
+    if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
+}
 
 const VAULT = '/home/node/obsidian-share';
 const now = new Date();
@@ -68,7 +109,7 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
   let tags = ['idee', 'telegram'];
 
   try {
-    const llmData = await $helpers.httpRequest({
+    const llmData = await httpRequest({
       method: 'POST',
       url: LLM_URL,
       headers: { 'Content-Type': 'application/json' },
@@ -163,7 +204,7 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
     const WIKI_API = 'https://api.github.com/repos/redactielinks/n8n/contents/kennisbank/wiki?ref=claude/angie-https-tunnel-foss-hfqqzl';
     const LLM_URL = 'http://100.68.46.126:27124/v1/chat/completions';
     try {
-      const listing = await $helpers.httpRequest({
+      const listing = await httpRequest({
         method: 'GET',
         url: WIKI_API,
         headers: { 'User-Agent': 'angie-bot' },
@@ -174,14 +215,14 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
 
       let wikiText = '';
       for (const f of files) {
-        const fileTxt = await $helpers.httpRequest({ method: 'GET', url: f.download_url, timeout: 15000 });
+        const fileTxt = await httpRequest({ method: 'GET', url: f.download_url, timeout: 15000 });
         wikiText += '\n\n## ' + f.name + '\n\n' + fileTxt;
       }
 
       if (!wikiText.trim()) {
         replyText = 'De wiki is nog leeg.';
       } else {
-        const llmData = await $helpers.httpRequest({
+        const llmData = await httpRequest({
           method: 'POST',
           url: LLM_URL,
           headers: { 'Content-Type': 'application/json' },
@@ -214,7 +255,7 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
     const SEARX_URL = 'http://100.77.5.104:8081/search?format=json&q=' + encodeURIComponent(content);
     const LLM_URL = 'http://100.68.46.126:27124/v1/chat/completions';
     try {
-      const searchData = await $helpers.httpRequest({
+      const searchData = await httpRequest({
         method: 'GET',
         url: SEARX_URL,
         json: true,
@@ -231,7 +272,7 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
           (i + 1) + '. ' + r.titel + ' (' + r.url + ')\n' + r.samenvatting
         ).join('\n\n');
 
-        const llmData = await $helpers.httpRequest({
+        const llmData = await httpRequest({
           method: 'POST',
           url: LLM_URL,
           headers: { 'Content-Type': 'application/json' },
@@ -348,7 +389,7 @@ docker run -d --name n8n --restart always -p 5678:5678 \
     -v /home/redactielinks/n8n-obsidian-share:/home/node/obsidian-share \
     -e N8N_SECURE_COOKIE=false \
     -e WEBHOOK_URL="${WEBHOOK_URL}" \
-    -e NODE_FUNCTION_ALLOW_BUILTIN=fs,path \
+    -e NODE_FUNCTION_ALLOW_BUILTIN=fs,path,http,https \
     n8nio/n8n:latest
 tailscale funnel --bg 5678 2>/dev/null || sudo tailscale funnel --bg 5678 2>/dev/null || true
 sleep 8 && docker logs n8n --tail 3
