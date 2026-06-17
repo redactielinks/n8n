@@ -29,10 +29,10 @@ if [ -z "$API_KEY" ]; then
 fi
 
 TMP_JSON="/tmp/openrouter-cred-$$.json"
-printf '%s' "$API_KEY" | python3 - "$CRED_ID" "$CRED_NAME" "$TMP_JSON" <<'PYEOF'
-import json, sys
+OPENROUTER_API_KEY="$API_KEY" python3 - "$CRED_ID" "$CRED_NAME" "$TMP_JSON" <<'PYEOF'
+import json, os, sys
 cred_id, name, out_path = sys.argv[1:4]
-api_key = sys.stdin.read()
+api_key = os.environ['OPENROUTER_API_KEY']
 data = [{"id": cred_id, "name": name, "type": "openRouterApi", "data": {"apiKey": api_key}}]
 with open(out_path, 'w') as f:
     json.dump(data, f)
