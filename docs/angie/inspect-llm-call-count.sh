@@ -39,8 +39,12 @@ let flatted;
 try {
   flatted = require("flatted");
 } catch (e) {
-  console.log("GEEN flatted-module gevonden in de container, kan niet structureel parsen.");
-  process.exit(1);
+  try {
+    flatted = require("/usr/local/lib/node_modules/n8n/node_modules/.pnpm/flatted@3.4.2/node_modules/flatted");
+  } catch (e2) {
+    console.log("GEEN flatted-module gevonden in de container, kan niet structureel parsen.");
+    process.exit(1);
+  }
 }
 const raw = fs.readFileSync("/tmp/last_exec_raw.txt", "utf8");
 let data;
