@@ -211,7 +211,7 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
   if (!content) {
     replyText = 'Stel een onderzoeksvraag. Voorbeeld: /onderzoek nieuwste inzichten over twice exceptional';
   } else {
-    const SEARX_URL = 'http://100.77.5.104:8080/search?format=json&q=' + encodeURIComponent(content);
+    const SEARX_URL = 'http://100.77.5.104:8081/search?format=json&q=' + encodeURIComponent(content);
     const LLM_URL = 'http://100.68.46.126:27124/v1/chat/completions';
     try {
       const searchRes = await fetch(SEARX_URL);
@@ -252,7 +252,7 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
           '\n\n(Niet automatisch opgeslagen. Plaats dit zelf in raw/ als je het wilt bewaren.)';
       }
     } catch(e) {
-      replyText = 'Onderzoek niet mogelijk nu. Controleer of SearXNG (poort 8080) en LM Studio draaien.';
+      replyText = 'Onderzoek niet mogelijk nu. Controleer of SearXNG (poort 8081) en LM Studio draaien.';
     }
   }
 

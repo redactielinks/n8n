@@ -5,12 +5,16 @@
 # testen is niet genoeg).
 set -uo pipefail
 
-SEARX_TS="http://100.77.5.104:8080/search?q=test&format=json"
-SEARX_LOCAL="http://localhost:8080/search?q=test&format=json"
+SEARX_TS="http://100.77.5.104:8081/search?q=test&format=json"
+SEARX_LOCAL="http://localhost:8081/search?q=test&format=json"
 LLM_URL="http://100.68.46.126:27124/v1/models"
 
-echo "== 1. SearXNG container draait? =="
-docker ps --format '{{.Names}}\t{{.Status}}' | grep searxng || echo "GEEN searxng container gevonden."
+echo "== 1. SearXNG container (ook gestopte tonen) =="
+docker ps -a --format '{{.Names}}\t{{.Status}}\t{{.Ports}}' | grep searxng || echo "GEEN searxng container gevonden."
+
+echo ""
+echo "== 1b. Wat luistert er op poort 8080 (de oude conflicterende poort)? =="
+sudo ss -tlnp 2>/dev/null | grep ':8080 ' || echo "Niets (meer) op 8080, of 'ss' niet beschikbaar."
 
 echo ""
 echo "== 2. SearXNG bereikbaar vanaf de Pi-host (localhost) =="
