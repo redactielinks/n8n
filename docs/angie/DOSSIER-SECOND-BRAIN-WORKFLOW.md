@@ -26,6 +26,9 @@ Elke keer dat je een bericht stuurt naar je Telegram-bot op je iPhone, verwerkt 
 | `/taak [tekst]` | `/todo`, `/task` | Slaat op als checkbox-taak (`- [ ]`) |
 | `/idee [tekst]` | `/idea` | Slaat op als idee-notitie |
 | `/dagboek [tekst]` | `/journal` | Slaat op als dagboek-entry |
+| `/braindump [tekst]` | `/park` | Parkeert een gedachte direct, daarna verificatie-zoekopdracht + LLM-beoordeling (klopt het, ontwikkeling, brainstorm) + Mermaid-mindmap, allemaal in dezelfde notitie onder `Braindumps/` |
+| `/onderzoek [vraag]` | — | Zoekt via SearXNG, laat Gemma de bronnen beoordelen en samenvatten |
+| `/wiki [vraag]` | — | Doorzoekt `kennisbank/wiki` op GitHub en laat Gemma antwoorden |
 | `/help` | `/commando`, `/start` | Stuurt commandolijst terug |
 | *(vrije tekst zonder prefix)* | — | LLM classificeert en structureert automatisch |
 
