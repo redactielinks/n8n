@@ -34,6 +34,17 @@ klaarstaat, zodat oppakken straks één commando is.
   desktop-browser (bijv. via een scherm op de Mac Mini) om de cookie op te
   halen.
 
+## Notities
+
+- **Ctrl+O werkt niet op het iPhone-toetsenbord in Termius.** Dat is de
+  toetsencombinatie om in `nano` op te slaan. Gevolg: instructies die
+  vragen om iets in `nano` (of een andere terminal-editor) te plakken en
+  op te slaan zijn niet uitvoerbaar vanaf de iPhone. Vermijd dit patroon
+  in toekomstige scripts/instructies — gebruik in plaats daarvan
+  bestandsoverdracht (Termius' SFTP-functie) of complete shell-commando's
+  zonder editor-stap (bijv. `curl`, `tar`, heredocs die direct in de
+  terminal worden uitgevoerd).
+
 ## Afgerond
 
 - ~~Overstap van lokaal LLM (Gemma/Mac Mini) naar OpenRouter/Mistral~~ —
