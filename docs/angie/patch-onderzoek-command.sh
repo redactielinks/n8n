@@ -201,22 +201,42 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
   if (!content) {
     replyText = 'Stel een vraag. Voorbeeld: /wiki wat staat er over de schrijfstijl?';
   } else {
-    const WIKI_API = 'https://api.github.com/repos/redactielinks/n8n/contents/kennisbank/wiki?ref=claude/angie-https-tunnel-foss-hfqqzl';
+    const BRANCH = 'claude/angie-https-tunnel-foss-hfqqzl';
+    const KENNISBANK_API = 'https://api.github.com/repos/redactielinks/n8n/contents/kennisbank?ref=' + BRANCH;
     const LLM_URL = 'http://100.68.46.126:27124/v1/chat/completions';
     try {
-      const listing = await httpRequest({
+      // Dit repo is de hele n8n-broncode; een recursieve tree-call op de
+      // hele branch zou tienduizenden bestanden teruggeven. Daarom eerst
+      // de tree-sha van enkel de wiki-map opzoeken, en alleen die subtree
+      // recursief uitlezen.
+      const kennisbankListing = await httpRequest({
         method: 'GET',
-        url: WIKI_API,
+        url: KENNISBANK_API,
         headers: { 'User-Agent': 'angie-bot' },
         json: true,
         timeout: 15000,
       });
-      const files = Array.isArray(listing) ? listing.filter(f => f.name.endsWith('.md')) : [];
+      const wikiEntry = (Array.isArray(kennisbankListing) ? kennisbankListing : [])
+        .find(e => e.name === 'wiki' && e.type === 'dir');
+
+      let files = [];
+      if (wikiEntry) {
+        const TREE_API = 'https://api.github.com/repos/redactielinks/n8n/git/trees/' + wikiEntry.sha + '?recursive=1';
+        const tree = await httpRequest({
+          method: 'GET',
+          url: TREE_API,
+          headers: { 'User-Agent': 'angie-bot' },
+          json: true,
+          timeout: 15000,
+        });
+        files = (tree.tree || []).filter(f => f.type === 'blob' && f.path.endsWith('.md'));
+      }
 
       let wikiText = '';
       for (const f of files) {
-        const fileTxt = await httpRequest({ method: 'GET', url: f.download_url, timeout: 15000 });
-        wikiText += '\n\n## ' + f.name + '\n\n' + fileTxt;
+        const rawUrl = 'https://raw.githubusercontent.com/redactielinks/n8n/' + BRANCH + '/kennisbank/wiki/' + f.path;
+        const fileTxt = await httpRequest({ method: 'GET', url: rawUrl, timeout: 15000 });
+        wikiText += '\n\n## ' + f.path + '\n\n' + fileTxt;
       }
 
       if (!wikiText.trim()) {
