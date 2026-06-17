@@ -54,29 +54,56 @@ docker cp n8n:/tmp/sec3.json /tmp/sec3.json
 
 python3 - "$WF_ID" "$OLD_NODE" "$NEW_NODE" "$CRED_ID" "$CRED_NAME" "$LM_STUDIO_BASE_URL" "$MODEL_NAME" <<'PYEOF'
 import json, sys
+
+OLD_TYPE = '@n8n/n8n-nodes-langchain.lmChatOpenRouter'
+NEW_TYPE = '@n8n/n8n-nodes-langchain.lmChatOpenAi'
+
 wf_id, old_node, new_node, cred_id, cred_name, base_url, model_name = sys.argv[1:8]
 
 with open('/tmp/sec3.json', encoding='utf-8') as f:
     data = json.load(f)
 wf = next(w for w in (data if isinstance(data, list) else [data]) if w.get('id') == wf_id)
 
-found = False
+# Zoek de te vervangen node op naam OF op type (naam kan handmatig
+# gewijzigd zijn zonder dat we dat weten; type van een OpenRouter-LLM-node
+# verandert niet zomaar).
+target = None
 for n in wf['nodes']:
-    if n['name'] == old_node:
-        n['name'] = new_node
-        n['type'] = '@n8n/n8n-nodes-langchain.lmChatOpenAi'
-        n['parameters'] = {
-            'model': model_name,
-            'options': {'baseURL': base_url},
-        }
-        n['credentials'] = {'openAiApi': {'id': cred_id, 'name': cred_name}}
-        found = True
-print(f"Node vervangen: {found}")
+    if n['name'] == old_node or n.get('type') == OLD_TYPE:
+        target = n
+        break
+
+already_migrated = any(
+    n.get('type') == NEW_TYPE and n['name'] == new_node for n in wf['nodes']
+)
+
+if target is None:
+    if already_migrated:
+        print(f"Node was al eerder vervangen door '{new_node}' (al lokale LLM, niets te doen).")
+        with open('/tmp/sec3-modified.json', 'w', encoding='utf-8') as f:
+            json.dump([wf], f, ensure_ascii=False, indent=2)
+        print("Klaar: /tmp/sec3-modified.json (ongewijzigd)")
+        sys.exit(0)
+    print(f"FOUT: geen node gevonden met naam {old_node!r} of type {OLD_TYPE!r}.")
+    print("Beschikbare nodes in deze workflow:")
+    for n in wf['nodes']:
+        print(f"  - {n['name']!r} (type: {n.get('type')!r})")
+    sys.exit(1)
+
+orig_name = target['name']
+target['name'] = new_node
+target['type'] = NEW_TYPE
+target['parameters'] = {
+    'model': model_name,
+    'options': {'baseURL': base_url},
+}
+target['credentials'] = {'openAiApi': {'id': cred_id, 'name': cred_name}}
+print(f"Node vervangen: True (was {orig_name!r})")
 
 conns = wf['connections']
-if old_node in conns:
-    conns[new_node] = conns.pop(old_node)
-    print(f"Verbinding-key hernoemd: {old_node!r} -> {new_node!r}")
+if orig_name in conns and orig_name != new_node:
+    conns[new_node] = conns.pop(orig_name)
+    print(f"Verbinding-key hernoemd: {orig_name!r} -> {new_node!r}")
 
 with open('/tmp/sec3-modified.json', 'w', encoding='utf-8') as f:
     json.dump([wf], f, ensure_ascii=False, indent=2)
