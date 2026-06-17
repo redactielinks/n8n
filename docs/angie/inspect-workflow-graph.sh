@@ -40,4 +40,23 @@ for n in wf['nodes']:
     if 'trigger' in n['type'].lower() and 'telegram' in n['type'].lower():
         print(f"Node: {n['name']}")
         print(json.dumps(n['parameters'], indent=2, ensure_ascii=False))
+
+print("\n=== Configuratie van routerende nodes ===")
+for naam in ['Is commando?', 'If', 'If1', 'Voice or Text', 'Detecteer pad',
+             'AllowList', 'Is bijlage?', 'Is /content?', 'Is /idee?']:
+    for n in wf['nodes']:
+        if n['name'] == naam:
+            print(f"\n--- {naam} (type={n['type']}) ---")
+            print(json.dumps(n.get('parameters', {}), indent=2, ensure_ascii=False))
+
+print("\n=== Secretaresse node (alleen type + systeemprompt-veldnamen, geen credentials) ===")
+for n in wf['nodes']:
+    if n['name'] == 'Secretaresse':
+        params = n.get('parameters', {})
+        print(f"type={n['type']}")
+        print(f"parameter-keys: {list(params.keys())}")
+        if 'text' in params:
+            print(f"text (eerste 300 tekens): {str(params['text'])[:300]}")
+        if 'options' in params:
+            print(f"options-keys: {list(params['options'].keys())}")
 PYEOF
