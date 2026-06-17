@@ -228,7 +228,7 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
         ).join('\n\n');
 
         const controller = new AbortController();
-        const llmTimeout = setTimeout(() => controller.abort(), 45000);
+        const llmTimeout = setTimeout(() => controller.abort(), 120000);
         const llmRes = await fetch(LLM_URL, {
           signal: controller.signal,
           method: 'POST',
@@ -252,7 +252,7 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
           '\n\n(Niet automatisch opgeslagen. Plaats dit zelf in raw/ als je het wilt bewaren.)';
       }
     } catch(e) {
-      replyText = 'Onderzoek niet mogelijk nu. Controleer of SearXNG (poort 8081) en LM Studio draaien.';
+      replyText = 'Onderzoek niet mogelijk nu (' + e.message + '). Controleer of SearXNG (poort 8081) en LM Studio draaien.';
     }
   }
 
