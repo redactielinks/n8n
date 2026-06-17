@@ -23,6 +23,15 @@ klaarstaat, zodat oppakken straks één commando is.
   n8n-webinterface), niet een los API-sleuteltje. Geen script mogelijk
   zonder browsertoegang tot de n8n-webinterface op een ander apparaat dan
   de iPhone. Wachten op: laptop/computer met browser beschikbaar.
+- **Artikelen publiceren op Substack via n8n.** Substack heeft geen
+  officiële publicatie-API. De enige route is via Substacks niet-publieke,
+  reverse-engineered API met een sessiecookie (`connect.sid`) als sleutel —
+  gekozen ondanks de fragiliteit (kan stoppen met werken bij wijzigingen
+  aan Substacks backend). Eerste stap: die cookie ophalen uit de
+  Netwerk-tab van desktop-browser-devtools (F12); dit is niet mogelijk
+  vanaf de iPhone alleen, de cookie is HttpOnly en dus onzichtbaar voor
+  gewone JavaScript-trucjes. Nog geen script: wachten op desktop-browser-
+  toegang (bijv. via een scherm op de Mac Mini) om de cookie op te halen.
 
 ## Afgerond
 
