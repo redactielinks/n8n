@@ -30,7 +30,12 @@ Elke keer dat je een bericht stuurt naar je Telegram-bot op je iPhone, verwerkt 
 | `/onderzoek [vraag]` | — | Zoekt via SearXNG, laat Gemma de bronnen beoordelen en samenvatten |
 | `/wiki [vraag]` | — | Doorzoekt `kennisbank/wiki` op GitHub en laat Gemma antwoorden |
 | `/help` | `/commando`, `/start` | Stuurt commandolijst terug |
-| *(vrije tekst zonder prefix)* | — | LLM classificeert en structureert automatisch |
+| *(vrije tekst zonder prefix)* | — | Gemma bepaalt zelf de intentie (wiki/onderzoek/braindump/idee/taak/dagboek/notitie) en voert die actie uit |
+| *(spraakbericht)* | — | Wordt eerst getranscribeerd via een zelf-gehoste Whisper-server, daarna verwerkt als vrije tekst |
+
+Commando's onthouden is dus niet meer nodig: gewoon typen of inspreken
+werkt ook. Zie `patch-vrije-tekst-en-spraak.sh` en
+`setup-whisper-mac-mini.sh`.
 
 ---
 
