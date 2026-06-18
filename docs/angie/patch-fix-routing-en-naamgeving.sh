@@ -25,11 +25,19 @@
 #      Handle Obsidian         -> Verwerk Wiki Commando
 #      Telegram: Obsidian Reply -> Telegram: Wiki Antwoord
 #
-# Voer dit uit OP de Raspberry Pi:
-#   curl -fsSL -o patch-fix-routing-en-naamgeving.sh https://raw.githubusercontent.com/redactielinks/n8n/claude/angie-https-tunnel-foss-hfqqzl/docs/angie/patch-fix-routing-en-naamgeving.sh
+# Voer dit uit OP de Raspberry Pi. Verwijder eerst een eventuele oude
+# lokale kopie en download daarna vers (anders kun je per ongeluk een
+# verlopen/gecachete versie uitvoeren zonder dat je het ziet):
+#   rm -f patch-fix-routing-en-naamgeving.sh
+#   curl -fsSL -o patch-fix-routing-en-naamgeving.sh "https://raw.githubusercontent.com/redactielinks/n8n/claude/angie-https-tunnel-foss-hfqqzl/docs/angie/patch-fix-routing-en-naamgeving.sh?t=$(date +%s)"
+#   grep -q "conn_type, outputs in conn_types" patch-fix-routing-en-naamgeving.sh && echo "OK: gefixte versie gedownload" || echo "FOUT: oude/verkeerde versie, probeer opnieuw"
 #   bash patch-fix-routing-en-naamgeving.sh
 # ============================================================
 set -euo pipefail
+
+SCRIPT_VERSIE="2026-06-18-fix2"
+echo "==> Scriptversie: ${SCRIPT_VERSIE} (regel-aantal: $(wc -l < "${BASH_SOURCE[0]}"))"
+echo "    Als dit niet overeenkomt met wat je verwacht: het bestand is verkeerd/oud gedownload."
 
 WF_ID="YdNGeswnhhzFdTFy"
 DB="/home/redactielinks/.n8n/database.sqlite"
@@ -66,6 +74,11 @@ def rename_in_connections(conns):
     # Echte n8n-structuur: connections[bron] = {"main": [[{node,type,index}, ...], [...]]}
     new_conns = {}
     for src, conn_types in conns.items():
+        if not isinstance(conn_types, dict):
+            raise TypeError(
+                f"Onverwachte structuur bij node '{src}': verwachtte een dict "
+                f"(bv. {{'main': [...]}}), kreeg {type(conn_types).__name__}: {conn_types!r}"
+            )
         new_src = RENAME.get(src, src)
         new_conn_types = {}
         for conn_type, outputs in conn_types.items():
@@ -73,6 +86,11 @@ def rename_in_connections(conns):
             for output in outputs:
                 new_output = []
                 for conn in output:
+                    if not isinstance(conn, dict):
+                        raise TypeError(
+                            f"Onverwachte connectie bij node '{src}' (type '{conn_type}'): "
+                            f"verwachtte een dict, kreeg {type(conn).__name__}: {conn!r}"
+                        )
                     conn = dict(conn)
                     if conn.get('node') in RENAME:
                         conn['node'] = RENAME[conn['node']]
