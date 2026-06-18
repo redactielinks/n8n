@@ -1,0 +1,629 @@
+#!/bin/bash
+# Twee fixes in één patch:
+# 1. /wiki (en de automatische intentieherkenning) las de kennisbank via de
+#    GitHub API — die map is inmiddels uit de GitHub-repo verwijderd (leeft
+#    nu alleen lokaal op deze Pi), dus /wiki was stuk. Leest nu rechtstreeks
+#    van ~/kennisbank/wiki, net als de wiki-site zelf.
+# 2. Nieuwe categorie "recept": een gestuurd recept wordt door het lokale
+#    LLM gestructureerd en opgeslagen onder kennisbank/wiki/koken/, gelinkt
+#    vanaf de Koken-categoriepagina, met een echte bevestiging terug.
+set -euo pipefail
+
+WF_ID="YdNGeswnhhzFdTFy"
+DB="/home/redactielinks/.n8n/database.sqlite"
+KENNISBANK_DIR="/home/redactielinks/kennisbank"
+
+echo "==> Exporteren..."
+docker exec n8n n8n export:workflow --all --output=/tmp/sec.json 2>/dev/null
+docker cp n8n:/tmp/sec.json /tmp/sec.json
+
+echo "==> Patchen..."
+python3 - <<'PYEOF'
+import json
+
+HANDLE_OBSIDIAN_JS = r"""
+const inp = $input.first().json;
+let text = (inp.text || inp.message?.text || '').trim();
+const chatId = String(inp.message?.from?.id || inp.chatId || '7319477310');
+const voice = inp.message?.voice || inp.message?.audio;
+const fs = require('fs');
+const path = require('path');
+const http = require('http');
+const https = require('https');
+const { URL } = require('url');
+
+const TELEGRAM_TOKEN = '8622180504:AAF-WK0seg3n8I4VGUS5xo_dQgw9PXGVyUU';
+const LLM_URL = 'http://100.68.46.126:27124/v1/chat/completions';
+const WHISPER_URL = 'http://100.68.46.126:27125/transcribe';
+const SEARX_BASE = 'http://100.77.5.104:8081/search?format=json&q=';
+
+// Buffer is hier niet beschikbaar (bleek eerder al bij de /onderzoek-fix).
+// Voor binaire audio gebruiken we daarom 'binary' (latin1) string-encoding:
+// elke byte komt 1-op-1 overeen met een char code 0-255, dus dat is
+// lossless zonder ooit de Buffer-API aan te raken.
+function httpRequest(opts) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(opts.url);
+    const lib = u.protocol === 'https:' ? https : http;
+    const isBinaryBody = typeof opts.body === 'string' && opts.bodyEncoding === 'binary';
+    let bodyStr;
+    if (isBinaryBody) {
+      bodyStr = opts.body;
+    } else if (opts.body !== undefined) {
+      bodyStr = JSON.stringify(opts.body);
+    }
+    const headers = Object.assign({}, opts.headers || {});
+    if (bodyStr !== undefined && !headers['Content-Type']) {
+      headers['Content-Type'] = isBinaryBody ? 'application/octet-stream' : 'application/json';
+    }
+    const req = lib.request({
+      hostname: u.hostname,
+      port: u.port || (u.protocol === 'https:' ? 443 : 80),
+      path: u.pathname + (u.search || ''),
+      method: opts.method || 'GET',
+      headers,
+    }, (res) => {
+      res.setEncoding(opts.binary ? 'binary' : 'utf8');
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        if (res.statusCode >= 400) {
+          reject(new Error('HTTP ' + res.statusCode + ': ' + data.slice(0, 200)));
+          return;
+        }
+        if (opts.binary) { resolve(data); return; }
+        if (opts.json) {
+          try { resolve(JSON.parse(data)); }
+          catch (e) { reject(new Error('Geen geldige JSON: ' + data.slice(0, 200))); }
+        } else {
+          resolve(data);
+        }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(opts.timeout || 30000, () => req.destroy(new Error('Timeout na ' + (opts.timeout || 30000) + 'ms')));
+    if (bodyStr !== undefined) req.write(bodyStr, isBinaryBody ? 'binary' : 'utf8');
+    req.end();
+  });
+}
+
+const VAULT = '/home/node/obsidian-share';
+const KENNISBANK_WIKI = '/home/redactielinks/kennisbank/wiki';
+const now = new Date();
+const pad = n => String(n).padStart(2, '0');
+const dateStr = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate());
+const timeStr = pad(now.getHours()) + ':' + pad(now.getMinutes());
+const timestamp = dateStr + ' ' + timeStr;
+const fileTs = String(now.getFullYear()) + pad(now.getMonth()+1) + pad(now.getDate()) + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+
+let viaSpraak = false;
+
+// Spraakbericht: eerst transcriberen, daarna verder als gewone tekst.
+if (!text && voice && voice.file_id) {
+  try {
+    const fileInfo = await httpRequest({
+      method: 'GET',
+      url: 'https://api.telegram.org/bot' + TELEGRAM_TOKEN + '/getFile?file_id=' + voice.file_id,
+      json: true, timeout: 15000,
+    });
+    const filePath = fileInfo?.result?.file_path;
+    const audioData = await httpRequest({
+      url: 'https://api.telegram.org/file/bot' + TELEGRAM_TOKEN + '/' + filePath,
+      binary: true, timeout: 20000,
+    });
+    const transcriptData = await httpRequest({
+      method: 'POST', url: WHISPER_URL,
+      body: audioData, bodyEncoding: 'binary', json: true, timeout: 60000,
+    });
+    text = (transcriptData.text || '').trim();
+    viaSpraak = true;
+  } catch (e) {
+    return [{ json: { replyText: 'Spraakbericht kon niet worden verwerkt (' + e.message + '). Controleer of de Whisper-server draait op de Mac Mini, of typ je bericht.', chatId, text: '' } }];
+  }
+  if (!text) {
+    return [{ json: { replyText: 'Ik heb niets kunnen verstaan in dat spraakbericht. Probeer het opnieuw of typ je bericht.', chatId, text: '' } }];
+  }
+}
+
+const cmdMatchRaw = text.match(/^\/(\w+)\s*([\s\S]*)/);
+let cmd = (cmdMatchRaw?.[1] || '').toLowerCase();
+let content = (cmdMatchRaw?.[2] || '').trim();
+
+// Geen / getypt: laat Gemma de intentie bepalen, zodat een commando
+// onthouden niet nodig is.
+const VRIJE_TEKST_INTENTS = ['notitie', 'dagboek', 'idee', 'taak', 'wiki', 'onderzoek', 'braindump', 'recept'];
+if (!cmdMatchRaw && text) {
+  try {
+    const llmData = await httpRequest({
+      method: 'POST', url: LLM_URL,
+      headers: { 'Content-Type': 'application/json' },
+      body: {
+        model: 'google/gemma-3-4b',
+        messages: [{
+          role: 'system',
+          content: 'Bepaal welke actie het beste past bij dit bericht. Antwoord uitsluitend als JSON: {"intent":"wiki|onderzoek|braindump|idee|taak|dagboek|notitie|recept"}. wiki = vraag over eigen kennisbank/aantekeningen. onderzoek = vraag die feitelijke informatie van het internet nodig heeft. braindump = een gedachte, brainwave of idee dat verder uitgewerkt en gecheckt moet worden. idee = kort, simpel idee zonder verdere uitwerking. taak = iets dat gedaan moet worden. dagboek = persoonlijke reflectie of dagverslag. recept = een kookrecept (ingredienten en/of bereidingswijze) dat bewaard moet worden. notitie = losse aantekening die nergens anders bij past.'
+        }, { role: 'user', content: text }],
+        stream: false, temperature: 0.1,
+      },
+      json: true, timeout: 30000,
+    });
+    const raw = llmData?.choices?.[0]?.message?.content || '{}';
+    const parsed = JSON.parse(raw.replace(/```json\n?|\n?```/g, '').trim());
+    cmd = VRIJE_TEKST_INTENTS.includes(parsed.intent) ? parsed.intent : 'notitie';
+  } catch (e) {
+    cmd = 'notitie';
+  }
+  content = text;
+}
+
+let replyText = '';
+
+if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
+  const dir = path.join(VAULT, 'Inbox');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const filepath = path.join(dir, fileTs + '-notitie.md');
+  const lines = ['---', 'tags:', '  - notitie', '  - telegram', 'datum: ' + timestamp, 'bron: telegram', '---', '', content];
+  fs.writeFileSync(filepath, lines.join('\n'), 'utf8');
+  const preview = content.length > 60 ? content.substring(0, 60) + '...' : content;
+  replyText = 'Notitie opgeslagen: "' + preview + '"';
+
+} else if (cmd === 'dagboek' || cmd === 'journal') {
+  const dir = path.join(VAULT, 'Dagboek');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const filepath = path.join(dir, dateStr + '.md');
+  const entry = '\n## ' + timestamp + '\n\n' + content + '\n';
+  if (fs.existsSync(filepath)) {
+    fs.appendFileSync(filepath, entry, 'utf8');
+  } else {
+    const header = ['---', 'tags:', '  - dagboek', '  - telegram', 'datum: ' + dateStr, 'bron: telegram', '---', '', '# Dagboek ' + dateStr, ''].join('\n');
+    fs.writeFileSync(filepath, header + entry, 'utf8');
+  }
+  replyText = 'Dagboek bijgewerkt voor ' + dateStr + '.';
+
+} else if (cmd === 'idee') {
+  let titel = content.substring(0, 60);
+  let samenvatting = '';
+  let categorie = 'Projecten';
+  let prioriteit = 'Normaal';
+  let tags = ['idee', 'telegram'];
+
+  try {
+    const llmData = await httpRequest({
+      method: 'POST',
+      url: LLM_URL,
+      headers: { 'Content-Type': 'application/json' },
+      body: {
+        model: 'google/gemma-3-4b',
+        messages: [{
+          role: 'system',
+          content: 'Antwoord uitsluitend als JSON (geen markdown). Velden: {"titel":"max 60 tekens","samenvatting":"2-3 zinnen","categorie":"Projecten|Zakelijk|Uitvinding|Levensstijl|Kopen|Reizen|Lezen|Gezondheid|Financien","prioriteit":"Laag|Normaal|Hoog","tags":["3-5 trefwoorden"]}'
+        }, {
+          role: 'user',
+          content: 'Brainstormidee: ' + content
+        }],
+        stream: false,
+        temperature: 0.3
+      },
+      json: true,
+      timeout: 45000,
+    });
+    const llmContent = llmData?.choices?.[0]?.message?.content || '{}';
+    const meta = JSON.parse(llmContent.replace(/```json\n?|\n?```/g, '').trim());
+    if (meta.titel)        titel        = String(meta.titel).substring(0, 60);
+    if (meta.samenvatting) samenvatting = String(meta.samenvatting);
+    if (meta.categorie)    categorie    = String(meta.categorie);
+    if (meta.prioriteit)   prioriteit   = String(meta.prioriteit);
+    if (Array.isArray(meta.tags)) tags  = meta.tags.concat(['idee', 'telegram']);
+  } catch(e) {
+    // LLM niet beschikbaar of timeout: sla op zonder verrijking
+  }
+
+  const dir = path.join(VAULT, 'Inbox');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const tagLines = tags.map(t => '  - ' + t).join('\n');
+  const fileContent = [
+    '---', 'tags:', tagLines,
+    'titel: ' + titel,
+    'categorie: ' + categorie,
+    'prioriteit: ' + prioriteit,
+    'datum: ' + timestamp, 'bron: telegram', '---', '',
+    '# ' + titel, '',
+    samenvatting || content, '',
+    samenvatting ? ('\n## Origineel\n\n' + content) : '',
+  ].join('\n');
+  fs.writeFileSync(path.join(dir, fileTs + '-idee.md'), fileContent, 'utf8');
+  const preview = titel.length > 60 ? titel.substring(0, 60) + '...' : titel;
+  replyText = 'Idee opgeslagen: "' + preview + '"' +
+    (samenvatting ? '\n\n' + samenvatting.substring(0, 120) : '');
+
+} else if (cmd === 'recept') {
+  if (!content) {
+    replyText = 'Stuur het recept als tekst (naam, ingrediënten, bereiding). Voorbeeld: /recept Romige champignonsoep: ...';
+  } else {
+    const KOKEN_DIR = path.join(KENNISBANK_WIKI, 'koken');
+    if (!fs.existsSync(KOKEN_DIR)) fs.mkdirSync(KOKEN_DIR, { recursive: true });
+
+    let titel = content.split('\n')[0].replace(/^#+\s*/, '').substring(0, 60).trim() || 'Recept';
+    let lichaam = '# ' + titel + '\n\n' + content;
+
+    try {
+      const llmData = await httpRequest({
+        method: 'POST', url: LLM_URL,
+        headers: { 'Content-Type': 'application/json' },
+        body: {
+          model: 'google/gemma-3-4b',
+          messages: [{
+            role: 'system',
+            content: 'Structureer dit recept netjes als markdown. Antwoord uitsluitend als JSON (geen markdown buiten de velden): {"titel":"korte naam van het gerecht, max 60 tekens","markdown":"# Titel\\n\\n## Ingredienten\\n- ...\\n\\n## Bereiding\\n1. ..."}. Verzin geen ingredienten of stappen die niet in de input staan.'
+          }, { role: 'user', content }],
+          stream: false, temperature: 0.2,
+        },
+        json: true, timeout: 45000,
+      });
+      const raw = llmData?.choices?.[0]?.message?.content || '{}';
+      const meta = JSON.parse(raw.replace(/```json\n?|\n?```/g, '').trim());
+      if (meta.titel) titel = String(meta.titel).substring(0, 60);
+      if (meta.markdown) lichaam = String(meta.markdown);
+    } catch (e) {
+      // LLM niet beschikbaar: bewaar het recept ongestructureerd, niet verloren laten gaan.
+    }
+
+    const slug = (titel.toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .substring(0, 50)) || ('recept-' + fileTs);
+    let filepath = path.join(KOKEN_DIR, slug + '.md');
+    let linkPad = slug;
+    if (fs.existsSync(filepath)) {
+      linkPad = slug + '-' + fileTs;
+      filepath = path.join(KOKEN_DIR, linkPad + '.md');
+    }
+    fs.writeFileSync(filepath, lichaam.trim() + '\n', 'utf8');
+
+    const indexPath = path.join(KENNISBANK_WIKI, 'koken.md');
+    const link = '- [' + titel + '](koken/' + linkPad + '.md)\n';
+    if (fs.existsSync(indexPath)) {
+      fs.appendFileSync(indexPath, link, 'utf8');
+    } else {
+      fs.writeFileSync(indexPath, '# Koken\n\n' + link, 'utf8');
+    }
+
+    replyText = 'Recept opgeslagen onder Koken: "' + titel + '"';
+  }
+
+} else if (cmd === 'taak') {
+  if (!content) {
+    replyText = 'Geef een taaknaam op. Voorbeeld: /taak rapport afmaken';
+  } else {
+    const dir = path.join(VAULT, 'Inbox');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const filepath = path.join(dir, fileTs + '-taak.md');
+    const lines = [
+      '---', 'tags:', '  - taak', '  - telegram',
+      'datum: ' + timestamp, 'bron: telegram', '---', '',
+      '- [ ] ' + content, '',
+    ].join('\n');
+    fs.writeFileSync(filepath, lines, 'utf8');
+    replyText = 'Taak aangemaakt: "' + content + '"';
+  }
+
+} else if (cmd === 'taken') {
+  const openTaken = [];
+  function scanDir(dir) {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch(e) { return; }
+    for (const e of entries) {
+      if (e.name.startsWith('.')) continue;
+      const fp = path.join(dir, e.name);
+      if (e.isDirectory()) { scanDir(fp); continue; }
+      if (!e.name.endsWith('.md')) continue;
+      try {
+        const txt = fs.readFileSync(fp, 'utf8');
+        txt.split('\n').filter(l => l.includes('- [ ]')).forEach(t => openTaken.push(t.trim()));
+      } catch(e2) {}
+    }
+  }
+  scanDir(VAULT);
+  if (openTaken.length === 0) {
+    replyText = 'Geen openstaande taken gevonden.';
+  } else {
+    const lijst = openTaken.slice(0, 20).join('\n');
+    replyText = 'Openstaande taken (' + openTaken.length + '):\n\n' + lijst;
+  }
+
+} else if (cmd === 'wiki') {
+  if (!content) {
+    replyText = 'Stel een vraag. Voorbeeld: /wiki wat staat er over de schrijfstijl?';
+  } else {
+    try {
+      let wikiText = '';
+      function scanWiki(dir, baseDir) {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+        for (const e of entries) {
+          if (e.name.startsWith('.')) continue;
+          const fp = path.join(dir, e.name);
+          if (e.isDirectory()) { scanWiki(fp, baseDir); continue; }
+          if (!e.name.endsWith('.md')) continue;
+          const rel = path.relative(baseDir, fp);
+          try {
+            wikiText += '\n\n## ' + rel + '\n\n' + fs.readFileSync(fp, 'utf8');
+          } catch (e2) {}
+        }
+      }
+      scanWiki(KENNISBANK_WIKI, KENNISBANK_WIKI);
+
+      if (!wikiText.trim()) {
+        replyText = 'De wiki is nog leeg.';
+      } else {
+        const llmData = await httpRequest({
+          method: 'POST',
+          url: LLM_URL,
+          headers: { 'Content-Type': 'application/json' },
+          body: {
+            model: 'google/gemma-3-4b',
+            messages: [{
+              role: 'system',
+              content: 'Je beantwoordt vragen uitsluitend op basis van de meegegeven wiki-inhoud. Schrijf in duidelijk, spreektaalachtig Nederlands, informeel met "je", direct ter zake, korte alinea\'s van max 3-4 regels, geen lange gedachtenstreep, geen emoji, geen clichés. Staat het antwoord niet in de wiki-inhoud, zeg dat dan expliciet in plaats van te gokken.'
+            }, {
+              role: 'user',
+              content: 'WIKI-INHOUD:\n' + wikiText + '\n\nVRAAG: ' + content
+            }],
+            stream: false,
+            temperature: 0.3
+          },
+          json: true,
+          timeout: 45000,
+        });
+        replyText = llmData?.choices?.[0]?.message?.content || 'Geen antwoord ontvangen van het model.';
+      }
+    } catch(e) {
+      replyText = 'Wiki niet doorzoekbaar nu (' + e.message + '). Controleer of de kennisbank-map gemount is in de n8n-container, of dat LM Studio draait op de Mac Mini.';
+    }
+  }
+
+} else if (cmd === 'onderzoek') {
+  if (!content) {
+    replyText = 'Stel een onderzoeksvraag. Voorbeeld: /onderzoek nieuwste inzichten over twice exceptional';
+  } else {
+    const SEARX_URL = SEARX_BASE + encodeURIComponent(content);
+    try {
+      const searchData = await httpRequest({
+        method: 'GET',
+        url: SEARX_URL,
+        json: true,
+        timeout: 15000,
+      });
+      const results = (searchData.results || []).slice(0, 8).map(r => ({
+        titel: r.title || '', url: r.url || '', samenvatting: r.content || ''
+      }));
+
+      if (results.length === 0) {
+        replyText = 'Geen zoekresultaten gevonden voor "' + content + '".';
+      } else {
+        const bronnenTekst = results.map((r, i) =>
+          (i + 1) + '. ' + r.titel + ' (' + r.url + ')\n' + r.samenvatting
+        ).join('\n\n');
+
+        const llmData = await httpRequest({
+          method: 'POST',
+          url: LLM_URL,
+          headers: { 'Content-Type': 'application/json' },
+          body: {
+            model: 'google/gemma-3-4b',
+            messages: [{
+              role: 'system',
+              content: 'Je krijgt een onderzoeksvraag en zoekresultaten van het internet. Beoordeel welke bronnen betrouwbaar lijken: officiele organisaties, vakliteratuur en bekende media wegen zwaarder dan onbekende sites of forums. Geef een kort, feitelijk antwoord gebaseerd op de betrouwbaarste bronnen, en sluit af met een genummerde lijst van de gebruikte bronnen (titel en link). Schrijf in duidelijk, spreektaalachtig Nederlands, informeel met "je", korte alinea\'s van max 3-4 regels, geen lange gedachtenstreep, geen emoji, geen clichés.'
+            }, {
+              role: 'user',
+              content: 'ONDERZOEKSVRAAG: ' + content + '\n\nZOEKRESULTATEN:\n' + bronnenTekst
+            }],
+            stream: false,
+            temperature: 0.3
+          },
+          json: true,
+          timeout: 120000,
+        });
+        replyText = (llmData?.choices?.[0]?.message?.content || 'Geen antwoord ontvangen van het model.') +
+          '\n\n(Niet automatisch opgeslagen. Plaats dit zelf in raw/ als je het wilt bewaren.)';
+      }
+    } catch(e) {
+      replyText = 'Onderzoek niet mogelijk nu (' + e.message + '). Controleer of SearXNG (poort 8081) en LM Studio draaien.';
+    }
+  }
+
+} else if (cmd === 'braindump' || cmd === 'park') {
+  if (!content) {
+    replyText = 'Beschrijf de gedachte die je wilt parkeren. Voorbeeld: /braindump wat als ik een cursus geef over twice exceptional ondernemerschap';
+  } else {
+    const dir = path.join(VAULT, 'Braindumps');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const titel = content.length > 60 ? content.substring(0, 60) + '...' : content;
+    const filepath = path.join(dir, fileTs + '-braindump.md');
+
+    // Stap 1: parkeren. Dit moet altijd lukken, los van wat hierna gebeurt,
+    // anders is het geen "los kunnen laten" maar gewoon weer een open lus.
+    const header = [
+      '---', 'tags:', '  - braindump', '  - telegram',
+      'titel: ' + titel,
+      'datum: ' + timestamp, 'bron: telegram', '---', '',
+      '# ' + titel, '',
+      '## Oorspronkelijke gedachte', '',
+      content, '',
+    ].join('\n');
+    fs.writeFileSync(filepath, header, 'utf8');
+
+    // Stap 2: verificatie, doorontwikkeling, brainstorm en mindmap.
+    try {
+      const SEARX_URL = SEARX_BASE + encodeURIComponent(content);
+
+      let bronnenTekst = 'Geen zoekresultaten gevonden.';
+      try {
+        const searchData = await httpRequest({ method: 'GET', url: SEARX_URL, json: true, timeout: 15000 });
+        const results = (searchData.results || []).slice(0, 8).map(r => ({
+          titel: r.title || '', url: r.url || '', samenvatting: r.content || ''
+        }));
+        if (results.length > 0) {
+          bronnenTekst = results.map((r, i) => (i + 1) + '. ' + r.titel + ' (' + r.url + ')\n' + r.samenvatting).join('\n\n');
+        }
+      } catch (e) {
+        // Zoeken mislukt: LLM geeft hierna een eigen beoordeling zonder bronnen.
+      }
+
+      const llmData = await httpRequest({
+        method: 'POST',
+        url: LLM_URL,
+        headers: { 'Content-Type': 'application/json' },
+        body: {
+          model: 'google/gemma-3-4b',
+          messages: [{
+            role: 'system',
+            content: 'Je helpt een geparkeerde gedachte verder te brengen. Antwoord uitsluitend als JSON (geen markdown). Velden: {"verificatie":"2-4 zinnen die inschatten of de gedachte klopt of haalbaar is, gebaseerd op de meegegeven zoekresultaten; zeg expliciet als er geen bronnen zijn","bronnen":["titel (url), max 3"],"ontwikkeling":["3-5 concrete manieren om het idee verder uit te werken"],"brainstorm":["3-5 verwante ideeen of varianten"]}'
+          }, {
+            role: 'user',
+            content: 'GEDACHTE: ' + content + '\n\nZOEKRESULTATEN:\n' + bronnenTekst
+          }],
+          stream: false,
+          temperature: 0.4
+        },
+        json: true,
+        timeout: 90000,
+      });
+      const llmContent = llmData?.choices?.[0]?.message?.content || '{}';
+      const result = JSON.parse(llmContent.replace(/```json\n?|\n?```/g, '').trim());
+      const verificatie = String(result.verificatie || 'Geen beoordeling ontvangen.');
+      const bronnen = Array.isArray(result.bronnen) ? result.bronnen : [];
+      const ontwikkeling = Array.isArray(result.ontwikkeling) ? result.ontwikkeling : [];
+      const brainstorm = Array.isArray(result.brainstorm) ? result.brainstorm : [];
+
+      function sanitize(s, max) {
+        return String(s).replace(/[\(\)\[\]"`\n]/g, '').trim().substring(0, max || 70);
+      }
+
+      const mindmapLines = ['```mermaid', 'mindmap', '  root((' + sanitize(titel, 50) + '))'];
+      if (verificatie) {
+        mindmapLines.push('    Verificatie');
+        mindmapLines.push('      ' + sanitize(verificatie, 70));
+      }
+      if (ontwikkeling.length) {
+        mindmapLines.push('    Ontwikkeling');
+        ontwikkeling.slice(0, 5).forEach(o => mindmapLines.push('      ' + sanitize(o, 70)));
+      }
+      if (brainstorm.length) {
+        mindmapLines.push('    Brainstorm');
+        brainstorm.slice(0, 5).forEach(b => mindmapLines.push('      ' + sanitize(b, 70)));
+      }
+      mindmapLines.push('```');
+
+      const extra = [
+        '', '## Verificatie', '',
+        verificatie, '',
+        bronnen.length ? ('Bronnen:\n' + bronnen.map(b => '- ' + b).join('\n')) : '',
+        '', '## Verdere ontwikkeling', '',
+        ontwikkeling.map(o => '- ' + o).join('\n'), '',
+        '## Brainstorm', '',
+        brainstorm.map(b => '- ' + b).join('\n'), '',
+        '## Mindmap', '',
+        mindmapLines.join('\n'), '',
+      ].join('\n');
+      fs.appendFileSync(filepath, extra, 'utf8');
+
+      replyText = 'Gedachte geparkeerd en uitgewerkt: "' + titel + '"\n\n' +
+        verificatie.substring(0, 200) + '\n\n' +
+        ontwikkeling.length + ' ontwikkelrichtingen, ' + brainstorm.length + ' brainstormideeen en een mindmap toegevoegd. Open de notitie in Obsidian om alles te zien.';
+    } catch (e) {
+      replyText = 'Gedachte geparkeerd: "' + titel + '"\n\nVerdere verwerking (onderzoek/brainstorm/mindmap) is nu niet gelukt (' + e.message + '). De gedachte staat wel veilig in je inbox, je kunt het later opnieuw proberen.';
+    }
+  }
+
+} else if (cmd === 'zoek' || cmd === 'search' || cmd === 'find') {
+  if (!content || content.length < 2) {
+    replyText = 'Geef een zoekterm op. Voorbeeld: /zoek project aanpak';
+  } else {
+    const results = [];
+    function searchVault(dir, q) {
+      if (results.length >= 5) return;
+      let entries;
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch(e) { return; }
+      for (const e of entries) {
+        if (results.length >= 5) break;
+        if (e.name.startsWith('.')) continue;
+        const fp = path.join(dir, e.name);
+        if (e.isDirectory()) { searchVault(fp, q); }
+        else if (e.name.endsWith('.md')) {
+          try {
+            const txt = fs.readFileSync(fp, 'utf8');
+            if (txt.toLowerCase().includes(q.toLowerCase())) {
+              const lines = txt.split('\n');
+              const hit = lines.find(l => l.toLowerCase().includes(q.toLowerCase()) && l.trim() && !l.startsWith('---') && !l.startsWith('tags:')) || '';
+              const clean = hit.trim().replace(/^#+\s*/, '').replace(/[*_`\[\]]/g, '').substring(0, 80);
+              results.push({ name: e.name.replace('.md', ''), preview: clean });
+            }
+          } catch(e2) {}
+        }
+      }
+    }
+    searchVault(VAULT, content);
+    if (results.length === 0) {
+      replyText = 'Geen notities gevonden voor "' + content + '".';
+    } else {
+      const list = results.map((r, i) =>
+        (i + 1) + '. ' + r.name + (r.preview ? '\n   ' + r.preview : '')
+      ).join('\n\n');
+      replyText = 'Gevonden (' + results.length + ') voor "' + content + '":\n\n' + list;
+    }
+  }
+} else {
+  replyText = 'Beschikbare commando\'s:\n/notitie /dagboek /idee /taak /taken /wiki /onderzoek /braindump /recept /zoek\n\nJe kunt ook gewoon typen of een spraakbericht sturen zonder commando, dan bepaal ik zelf wat je bedoelt.';
+}
+
+if (viaSpraak) {
+  replyText = 'Gehoord: "' + text.substring(0, 80) + (text.length > 80 ? '...' : '') + '"\n\n' + replyText;
+}
+
+return [{ json: { replyText, chatId, text } }];
+""".strip()
+
+with open('/tmp/sec.json', encoding='utf-8') as f:
+    data = json.load(f)
+
+wf = next(w for w in (data if isinstance(data, list) else [data])
+          if w.get('id') == 'YdNGeswnhhzFdTFy')
+print(f"Gevonden: {wf['name']}")
+
+for node in wf['nodes']:
+    nm = node['name']
+    if nm == 'Handle Obsidian':
+        node['parameters']['jsCode'] = HANDLE_OBSIDIAN_JS
+        print("  ~ Handle Obsidian: /recept toegevoegd, /wiki leest lokaal")
+
+with open('/tmp/sec-modified.json', 'w', encoding='utf-8') as f:
+    json.dump([wf], f, ensure_ascii=False, indent=2)
+print("Klaar: /tmp/sec-modified.json")
+PYEOF
+
+echo "==> Importeren..."
+docker cp /tmp/sec-modified.json n8n:/tmp/sec-modified.json
+docker exec n8n n8n import:workflow --input=/tmp/sec-modified.json --overwrite-all
+
+echo "==> Activeren en n8n herstarten met toegang tot de kennisbank..."
+ACTIVE_VID=$(sqlite3 "${DB}" "SELECT versionId FROM workflow_history WHERE workflowId='${WF_ID}' ORDER BY createdAt DESC LIMIT 1;")
+docker stop n8n 2>/dev/null || true
+sqlite3 "${DB}" "UPDATE workflow_entity SET active=1, activeVersionId='${ACTIVE_VID}' WHERE id='${WF_ID}';"
+WEBHOOK_URL=$(tailscale status --json | python3 -c "import sys,json; d=json.load(sys.stdin); print('https://' + d['Self']['DNSName'].rstrip('.'))")
+docker rm n8n 2>/dev/null || true
+docker run -d --name n8n --restart always -p 5678:5678 \
+    -v /home/redactielinks/.n8n:/home/node/.n8n \
+    -v /home/redactielinks/n8n-obsidian-share:/home/node/obsidian-share \
+    -v "${KENNISBANK_DIR}:${KENNISBANK_DIR}" \
+    -e N8N_SECURE_COOKIE=false \
+    -e WEBHOOK_URL="${WEBHOOK_URL}" \
+    -e NODE_FUNCTION_ALLOW_BUILTIN=fs,path,http,https,url \
+    n8nio/n8n:latest
+tailscale funnel --bg 5678 2>/dev/null || sudo tailscale funnel --bg 5678 2>/dev/null || true
+sleep 8 && docker logs n8n --tail 3
+echo ""
+echo "Test:"
+echo "  /recept Romige champignonsoep: champignons, room, bouillon, ui. Fruit de ui, voeg champignons toe, blus af met bouillon, roer de room erdoor."
+echo "  /wiki wat staat er over de schrijfstijl?"
