@@ -5,6 +5,13 @@ klaarstaat, zodat oppakken straks één commando is.
 
 ## Open
 
+- **Foto's beschrijven in de wiki-chat.** De chat op de wiki-homepage kan
+  bestanden uploaden, maar herkent alleen leesbare tekstbestanden
+  (.txt/.md) — een foto krijgt nu een duidelijke melding terug in plaats
+  van een (fout) antwoord. Er is geen vision-model gekoppeld aan de
+  bestaande LLM-endpoints (Mac Mini LM Studio / OpenRouter Mistral).
+  Eerste stap: uitzoeken of het huidige Mistral-model op OpenRouter een
+  vision-variant heeft, of een los vision-model op de Mac Mini draaien.
 - **OpenWeatherMap-credential herstellen.** Zelfde decryptiefout als eerder
   bij OpenRouter: credential dateert van voor de sleutelwijziging op 13
   juni, nooit opnieuw opgeslagen. Gevolg: de "Weer"-tool faalt stil, de

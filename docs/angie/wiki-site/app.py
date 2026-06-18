@@ -15,11 +15,14 @@ Bedoeld om uitsluitend bereikbaar te zijn via `tailscale serve` (tailnet-
 only), nooit via `tailscale funnel` (publiek internet).
 """
 import html
+import json
 import os
 import re
 import threading
 import time
+import urllib.error
 import urllib.parse
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 KENNISBANK_DIR = os.environ.get("KENNISBANK_DIR", os.path.expanduser("~/kennisbank"))
@@ -29,6 +32,39 @@ CATEGORY_SLUGS = ["persoonlijk", "praktisch", "prompts", "koken"]
 PORT = 8090
 CACHE_TTL = 300  # seconden
 RECENT_COUNT = 8
+
+# Dezelfde commandoherkenning als Telegram, maar dan rechtstreeks vanaf
+# deze website aangeroepen (zie docs/angie/patch-cli-bypass.sh).
+N8N_CLI_URL = os.environ.get("N8N_CLI_URL", "http://100.77.5.104:5678/webhook/angie-cli")
+WHISPER_URL = os.environ.get("WHISPER_URL", "http://100.68.46.126:27125/transcribe")
+CHAT_HTTP_TIMEOUT = 30
+
+
+def call_n8n_cli(text):
+    """Stuurt tekst naar dezelfde commandoherkenning als Telegram/CLI en
+    geeft het antwoord terug. Gooit een Exception met een leesbare reden
+    als dat niet lukt (n8n niet bereikbaar, timeout, etc.)."""
+    body = json.dumps({"text": text}).encode("utf-8")
+    req = urllib.request.Request(
+        N8N_CLI_URL, data=body, method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=CHAT_HTTP_TIMEOUT) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    return data.get("reply", "")
+
+
+def call_whisper(audio_bytes):
+    """Stuurt audio (willekeurig formaat, ffmpeg/whisper bepaalt zelf de
+    inhoud, niet de bestandsnaam) naar de Whisper-server en geeft de
+    getranscribeerde tekst terug."""
+    req = urllib.request.Request(
+        WHISPER_URL, data=audio_bytes, method="POST",
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    with urllib.request.urlopen(req, timeout=CHAT_HTTP_TIMEOUT) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    return data.get("text", "")
 
 _cache_lock = threading.Lock()
 _cache = {"pages": {}, "todo": "", "mtimes": {}, "built_at": 0.0}
@@ -290,6 +326,35 @@ PAGE_TEMPLATE = """<!doctype html>
     border: 1px solid #999; background: transparent; color: #0a5ea8;
   }}
   .page-actions button.danger {{ border-color: #c33; color: #c33; }}
+  .chat-box {{
+    margin: 1.2rem 0 1.8rem; border: 1px solid #999; border-radius: 10px;
+    padding: 0.8rem;
+  }}
+  .chat-log {{
+    max-height: 55vh; overflow-y: auto; display: flex;
+    flex-direction: column; gap: 0.5rem; margin-bottom: 0.6rem;
+  }}
+  .chat-bubble {{
+    padding: 0.5rem 0.7rem; border-radius: 10px; max-width: 90%;
+    white-space: pre-wrap; word-break: break-word;
+  }}
+  .chat-bubble.user {{ align-self: flex-end; background: #0a5ea8; color: white; }}
+  .chat-bubble.angie {{ align-self: flex-start; background: rgba(128,128,128,0.18); }}
+  .chat-bubble.error {{ align-self: flex-start; background: rgba(204,51,51,0.15); color: #c33; }}
+  .chat-input-row {{ display: flex; gap: 0.4rem; align-items: flex-end; }}
+  .chat-input-row textarea {{
+    flex: 1; padding: 0.6rem; font-size: 1rem; border: 1px solid #999;
+    border-radius: 8px; resize: none; font-family: inherit;
+  }}
+  .chat-input-row button {{
+    padding: 0.6rem 0.8rem; font-size: 1.1rem; border: none;
+    border-radius: 8px; background: #0a5ea8; color: white; flex-shrink: 0;
+  }}
+  .chat-input-row button.secondary {{
+    background: transparent; border: 1px solid #999; color: inherit;
+  }}
+  .chat-input-row button.secondary.recording {{ background: #c33; border-color: #c33; color: white; }}
+  .chat-status {{ min-height: 1.2rem; font-size: 0.85rem; color: #666; margin: 0.3rem 0 0; }}
 </style>
 </head>
 <body>
@@ -314,6 +379,9 @@ function copyRaw(id, btn) {{
 function shareRaw(id) {{
   var el = document.getElementById(id);
   navigator.share({{ text: el.value }});
+}}
+function shareLastReply() {{
+  if (window.__lastAngieReply) navigator.share({{ text: window.__lastAngieReply }});
 }}
 document.querySelectorAll('.share-btn').forEach(function(b) {{
   if (navigator.share) b.hidden = false;
@@ -354,6 +422,132 @@ def render_page_actions(route, raw_text):
 </div>"""
 
 
+CHAT_HTML = """
+<div class="chat-box">
+  <div id="chat-log" class="chat-log"></div>
+  <div class="chat-input-row">
+    <textarea id="chat-text" rows="1" placeholder="Schrijf iets, bv. /taken of een vraag..."></textarea>
+    <button type="button" id="chat-mic" class="secondary" title="Inspreken">&#127908;</button>
+    <button type="button" id="chat-upload-btn" class="secondary" title="Bestand uploaden">&#128206;</button>
+    <input type="file" id="chat-file" hidden accept=".txt,.md,.markdown,text/plain">
+    <button type="button" id="chat-send" title="Versturen">&#10148;</button>
+  </div>
+  <p id="chat-status" class="chat-status"></p>
+  <button type="button" class="share-btn" onclick="shareLastReply()" hidden>Laatste antwoord delen</button>
+</div>
+<script>
+(function() {
+  var log = document.getElementById('chat-log');
+  var input = document.getElementById('chat-text');
+  var sendBtn = document.getElementById('chat-send');
+  var micBtn = document.getElementById('chat-mic');
+  var uploadBtn = document.getElementById('chat-upload-btn');
+  var fileInput = document.getElementById('chat-file');
+  var status = document.getElementById('chat-status');
+  var shareBtn = document.querySelector('.chat-box .share-btn');
+
+  function addBubble(role, text) {
+    var div = document.createElement('div');
+    div.className = 'chat-bubble ' + role;
+    div.textContent = text;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+    return div;
+  }
+
+  function onReply(data) {
+    status.textContent = '';
+    if (data.error) { addBubble('error', data.error); return; }
+    if (data.transcript) { addBubble('user', data.transcript); }
+    addBubble('angie', data.reply);
+    window.__lastAngieReply = data.reply;
+    if (shareBtn && navigator.share) shareBtn.hidden = false;
+  }
+
+  function onFail(e) {
+    status.textContent = '';
+    addBubble('error', 'Verbinding mislukt: ' + e.message);
+  }
+
+  function postJson(url, opts) {
+    return fetch(url, opts).then(function(r) { return r.json(); });
+  }
+
+  function sendText(text) {
+    if (!text) return;
+    addBubble('user', text);
+    status.textContent = 'Bezig...';
+    postJson('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: text})
+    }).then(onReply).catch(onFail);
+  }
+
+  sendBtn.addEventListener('click', function() {
+    var text = input.value.trim();
+    input.value = '';
+    sendText(text);
+  });
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendBtn.click();
+    }
+  });
+
+  uploadBtn.addEventListener('click', function() { fileInput.click(); });
+  fileInput.addEventListener('change', function() {
+    var file = fileInput.files[0];
+    if (!file) return;
+    addBubble('user', 'Bestand: ' + file.name);
+    status.textContent = 'Bezig...';
+    postJson('/api/chat/upload', {
+      method: 'POST',
+      headers: {'X-Filename': file.name},
+      body: file
+    }).then(onReply).catch(onFail);
+    fileInput.value = '';
+  });
+
+  if (navigator.mediaDevices && window.MediaRecorder) {
+    var mediaRecorder = null;
+    var chunks = [];
+    var recording = false;
+    micBtn.addEventListener('click', function() {
+      if (!recording) {
+        navigator.mediaDevices.getUserMedia({audio: true}).then(function(stream) {
+          chunks = [];
+          mediaRecorder = new MediaRecorder(stream);
+          mediaRecorder.ondataavailable = function(e) { chunks.push(e.data); };
+          mediaRecorder.onstop = function() {
+            stream.getTracks().forEach(function(t) { t.stop(); });
+            var blob = new Blob(chunks, {type: mediaRecorder.mimeType});
+            status.textContent = 'Bezig met transcriberen...';
+            postJson('/api/chat/voice', {method: 'POST', body: blob}).then(onReply).catch(onFail);
+          };
+          mediaRecorder.start();
+          recording = true;
+          micBtn.classList.add('recording');
+          micBtn.title = 'Stop opname';
+        }).catch(function(e) {
+          addBubble('error', 'Microfoon niet beschikbaar: ' + e.message);
+        });
+      } else {
+        mediaRecorder.stop();
+        recording = false;
+        micBtn.classList.remove('recording');
+        micBtn.title = 'Inspreken';
+      }
+    });
+  } else {
+    micBtn.hidden = true;
+  }
+})();
+</script>
+"""
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
@@ -362,6 +556,14 @@ class Handler(BaseHTTPRequestHandler):
         encoded = body.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def _send_json(self, obj, status=200):
+        encoded = json.dumps(obj).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
@@ -389,7 +591,7 @@ class Handler(BaseHTTPRequestHandler):
                 f"<h2>Recent toegevoegd</h2><ul>{recent_items}</ul>"
                 if recent_items else "<p>Nog geen wiki-pagina's.</p>"
             )
-            body = render_search_form() + recent_html
+            body = CHAT_HTML + render_search_form() + recent_html
             self._send_html(render_page("Wiki", body))
             return
 
@@ -452,7 +654,67 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         route = parsed.path
         length = int(self.headers.get("Content-Length", 0) or 0)
-        raw_body = self.rfile.read(length).decode("utf-8") if length else ""
+        raw_bytes = self.rfile.read(length) if length else b""
+
+        if route == "/api/chat":
+            try:
+                payload = json.loads(raw_bytes.decode("utf-8")) if raw_bytes else {}
+                text = (payload.get("text") or "").strip()
+                if not text:
+                    self._send_json({"error": "Leeg bericht."}, status=400)
+                    return
+                reply = call_n8n_cli(text)
+                self._send_json({"reply": reply})
+            except (urllib.error.URLError, OSError, TimeoutError) as e:
+                self._send_json({"error": f"Angie is nu niet bereikbaar ({e})."}, status=502)
+            except Exception as e:
+                self._send_json({"error": f"Onverwachte fout: {e}"}, status=500)
+            return
+
+        if route == "/api/chat/voice":
+            try:
+                if not raw_bytes:
+                    self._send_json({"error": "Geen audio ontvangen."}, status=400)
+                    return
+                transcript = call_whisper(raw_bytes)
+                if not transcript:
+                    self._send_json({"error": "Ik heb niets kunnen verstaan in dat spraakbericht."}, status=400)
+                    return
+                reply = call_n8n_cli(transcript)
+                self._send_json({"transcript": transcript, "reply": reply})
+            except (urllib.error.URLError, OSError, TimeoutError) as e:
+                self._send_json({"error": f"Transcriberen of Angie niet bereikbaar ({e})."}, status=502)
+            except Exception as e:
+                self._send_json({"error": f"Onverwachte fout: {e}"}, status=500)
+            return
+
+        if route == "/api/chat/upload":
+            try:
+                filename = self.headers.get("X-Filename", "bestand")
+                if not raw_bytes:
+                    self._send_json({"error": "Geen bestand ontvangen."}, status=400)
+                    return
+                try:
+                    text = raw_bytes.decode("utf-8")
+                except UnicodeDecodeError:
+                    self._send_json({
+                        "error": (
+                            f"'{html.escape(filename)}' is geen leesbaar tekstbestand. "
+                            "Alleen tekstbestanden (.txt/.md) kunnen nu verwerkt worden — "
+                            "foto's nog niet, daarvoor is geen vision-model gekoppeld."
+                        ),
+                    }, status=415)
+                    return
+                message = f"Bestand ontvangen ({filename}):\n\n{text[:4000]}"
+                reply = call_n8n_cli(message)
+                self._send_json({"reply": reply})
+            except (urllib.error.URLError, OSError, TimeoutError) as e:
+                self._send_json({"error": f"Angie is nu niet bereikbaar ({e})."}, status=502)
+            except Exception as e:
+                self._send_json({"error": f"Onverwachte fout: {e}"}, status=500)
+            return
+
+        raw_body = raw_bytes.decode("utf-8")
         params = urllib.parse.parse_qs(raw_body)
 
         if route == "/verwijder":
