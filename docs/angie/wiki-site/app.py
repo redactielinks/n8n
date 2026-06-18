@@ -25,11 +25,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 KENNISBANK_DIR = os.environ.get("KENNISBANK_DIR", os.path.expanduser("~/kennisbank"))
 WIKI_ROOT = "kennisbank/wiki/index.md"
 TODO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "TODO.md")
+CATEGORY_SLUGS = ["persoonlijk", "praktisch", "prompts", "koken"]
 PORT = 8090
 CACHE_TTL = 300  # seconden
+RECENT_COUNT = 8
 
 _cache_lock = threading.Lock()
-_cache = {"pages": {}, "todo": "", "built_at": 0.0}
+_cache = {"pages": {}, "todo": "", "mtimes": {}, "built_at": 0.0}
 
 
 def fetch_local_todo():
@@ -41,12 +43,15 @@ def fetch_local_todo():
         return None
 
 
+def local_wiki_path(path):
+    rel = path[len("kennisbank/"):]
+    return os.path.join(KENNISBANK_DIR, rel)
+
+
 def fetch_local_wiki(path):
     """Leest een kennisbank/wiki/*.md-pad van de lokale schijf (nooit GitHub)."""
-    rel = path[len("kennisbank/"):]
-    full = os.path.join(KENNISBANK_DIR, rel)
     try:
-        with open(full, "r", encoding="utf-8") as f:
+        with open(local_wiki_path(path), "r", encoding="utf-8") as f:
             return f.read()
     except OSError:
         return None
@@ -56,10 +61,13 @@ LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 
 
 def crawl_wiki():
-    """Volgt links vanuit wiki/index.md om alle wiki-pagina's te vinden."""
+    """Volgt links vanuit wiki/index.md (en de categoriepagina's) om alle
+    wiki-pagina's te vinden. Geeft ook de laatste-wijzigingstijd per pagina
+    terug, gebruikt om de homepage te sorteren op recentste toevoeging."""
     pages = {}
+    mtimes = {}
     seen = set()
-    queue = [WIKI_ROOT]
+    queue = [WIKI_ROOT] + [f"kennisbank/wiki/{slug}.md" for slug in CATEGORY_SLUGS]
     while queue:
         path = queue.pop(0)
         if path in seen:
@@ -69,6 +77,10 @@ def crawl_wiki():
         if text is None:
             continue
         pages[path] = text
+        try:
+            mtimes[path] = os.stat(local_wiki_path(path)).st_mtime
+        except OSError:
+            pass
         base_dir = os.path.dirname(path)
         for _label, target in LINK_RE.findall(text):
             target = target.strip()
@@ -79,19 +91,20 @@ def crawl_wiki():
             resolved = os.path.normpath(os.path.join(base_dir, target))
             if resolved.startswith("kennisbank/wiki/") and resolved not in seen:
                 queue.append(resolved)
-    return pages
+    return pages, mtimes
 
 
 def get_cache():
     with _cache_lock:
         if time.time() - _cache["built_at"] > CACHE_TTL:
-            pages = crawl_wiki()
+            pages, mtimes = crawl_wiki()
             todo = fetch_local_todo() or "_TODO.md kon niet geladen worden._"
             if pages:
                 _cache["pages"] = pages
+                _cache["mtimes"] = mtimes
                 _cache["todo"] = todo
                 _cache["built_at"] = time.time()
-        return _cache["pages"], _cache["todo"]
+        return _cache["pages"], _cache["todo"], _cache["mtimes"]
 
 
 def wiki_path_to_route(path):
@@ -183,6 +196,11 @@ def markdown_to_html(text, base_dir=""):
     return "\n".join(out)
 
 
+def extract_title(text, fallback):
+    m = re.search(r"^#\s+(.*)$", text, re.MULTILINE)
+    return m.group(1) if m else fallback
+
+
 def strip_markdown(text):
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
     text = re.sub(r"[#*`_~]", "", text)
@@ -212,15 +230,10 @@ PAGE_TEMPLATE = """<!doctype html>
   a:active {{ opacity: 0.6; }}
   ul {{ padding-left: 1.2rem; }}
   li {{ margin-bottom: 0.4rem; }}
-  .top-nav {{ display: flex; gap: 1rem; margin-bottom: 1rem; font-size: 0.95rem; }}
-  .todo-box {{
-    background: #fff7e0; border: 1px solid #e8d28a; border-radius: 10px;
-    padding: 0.8rem 1rem; margin-bottom: 1.5rem;
+  .top-nav {{
+    display: flex; flex-wrap: wrap; gap: 0.4rem 0.9rem;
+    margin-bottom: 1.2rem; font-size: 0.92rem;
   }}
-  @media (prefers-color-scheme: dark) {{
-    .todo-box {{ background: #2a2410; border-color: #6b5a1e; }}
-  }}
-  .todo-box h1, .todo-box h2 {{ margin-top: 0.3rem; font-size: 1.05rem; }}
   form.search {{ display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }}
   form.search input[type=text] {{
     flex: 1; padding: 0.6rem; font-size: 1rem;
@@ -235,7 +248,14 @@ PAGE_TEMPLATE = """<!doctype html>
 </style>
 </head>
 <body>
-<div class="top-nav"><a href="/">Wiki</a> · <a href="/#todo">Todo</a></div>
+<div class="top-nav">
+  <a href="/">Wiki</a>
+  <a href="/wiki/persoonlijk">Persoonlijk</a>
+  <a href="/wiki/praktisch">Praktisch</a>
+  <a href="/wiki/prompts">Prompts</a>
+  <a href="/wiki/koken">Koken</a>
+  <a href="/todo">Todo</a>
+</div>
 {body}
 </body>
 </html>"""
@@ -270,21 +290,32 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         route = parsed.path
         params = urllib.parse.parse_qs(parsed.query)
-        pages, todo = get_cache()
+        pages, todo, mtimes = get_cache()
 
         if route == "/":
             if not pages:
                 self._send_html(render_page("Wiki", f"<p>Kan de wiki nu niet laden vanaf {html.escape(KENNISBANK_DIR)}. Probeer het later opnieuw.</p>"), status=503)
                 return
-            todo_html = markdown_to_html(todo, base_dir="docs/angie")
-            index_path = WIKI_ROOT
-            index_html = markdown_to_html(pages.get(index_path, ""), base_dir="kennisbank/wiki")
-            body = (
-                f'<div class="todo-box" id="todo"><h2>Todo</h2>{todo_html}</div>'
-                f"{render_search_form()}"
-                f"{index_html}"
+            recent_paths = sorted(
+                (p for p in pages if p != WIKI_ROOT),
+                key=lambda p: mtimes.get(p, 0),
+                reverse=True,
+            )[:RECENT_COUNT]
+            recent_items = "".join(
+                f'<li><a href="/wiki/{wiki_path_to_route(p)}">{html.escape(extract_title(pages[p], wiki_path_to_route(p)))}</a></li>'
+                for p in recent_paths
             )
+            recent_html = (
+                f"<h2>Recent toegevoegd</h2><ul>{recent_items}</ul>"
+                if recent_items else "<p>Nog geen wiki-pagina's.</p>"
+            )
+            body = render_search_form() + recent_html
             self._send_html(render_page("Wiki", body))
+            return
+
+        if route == "/todo":
+            todo_html = markdown_to_html(todo, base_dir="docs/angie")
+            self._send_html(render_page("Todo", todo_html))
             return
 
         if route == "/zoek":
@@ -301,8 +332,7 @@ class Handler(BaseHTTPRequestHandler):
                         idx = plain.lower().find(ql)
                         start = max(0, idx - 60)
                         snippet = plain[start:idx + 100].strip()
-                        title_match = re.search(r"^#\s+(.*)$", text, re.MULTILINE)
-                        title = title_match.group(1) if title_match else wiki_path_to_route(path)
+                        title = extract_title(text, wiki_path_to_route(path))
                         hits.append((title, wiki_path_to_route(path), snippet))
                 if hits:
                     items = "".join(
@@ -322,12 +352,15 @@ class Handler(BaseHTTPRequestHandler):
             wiki_path = route_to_wiki_path(wiki_route)
             text = pages.get(wiki_path)
             if text is None:
+                if wiki_route in CATEGORY_SLUGS:
+                    title = wiki_route.capitalize()
+                    self._send_html(render_page(title, f"<h1>{title}</h1><p>Nog geen pagina's in deze categorie.</p>"))
+                    return
                 self._send_html(render_page("Niet gevonden", "<p>Pagina niet gevonden.</p>"), status=404)
                 return
             base_dir = os.path.dirname(wiki_path)
             content_html = markdown_to_html(text, base_dir=base_dir)
-            title_match = re.search(r"^#\s+(.*)$", text, re.MULTILINE)
-            title = title_match.group(1) if title_match else wiki_route
+            title = extract_title(text, wiki_route)
             self._send_html(render_page(title, content_html))
             return
 
