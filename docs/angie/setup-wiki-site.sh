@@ -67,9 +67,9 @@ echo "============================================================"
 echo "  Klaar"
 echo "============================================================"
 if [[ -n "$TAILSCALE_FQDN" ]]; then
-    echo "  Open op je iPhone (met Tailscale aan): https://${TAILSCALE_FQDN}:${PORT}/"
+    echo "  Open op je iPhone (met Tailscale aan): https://${TAILSCALE_FQDN}/"
 else
-    echo "  Open op je iPhone (met Tailscale aan): https://<jouw-tailscale-naam>:${PORT}/"
+    echo "  Open op je iPhone (met Tailscale aan): https://<jouw-tailscale-naam>/"
 fi
 echo "  Alleen bereikbaar binnen je tailnet, niet vanaf het publieke internet."
 echo ""
