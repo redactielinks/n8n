@@ -40,10 +40,23 @@ klaarstaat, zodat oppakken straks één commando is.
   toetsencombinatie om in `nano` op te slaan. Gevolg: instructies die
   vragen om iets in `nano` (of een andere terminal-editor) te plakken en
   op te slaan zijn niet uitvoerbaar vanaf de iPhone. Vermijd dit patroon
-  in toekomstige scripts/instructies — gebruik in plaats daarvan
-  bestandsoverdracht (Termius' SFTP-functie) of complete shell-commando's
-  zonder editor-stap (bijv. `curl`, `tar`, heredocs die direct in de
-  terminal worden uitgevoerd).
+  in toekomstige scripts/instructies — gebruik in plaats daarvan complete
+  shell-commando's zonder editor-stap (bijv. `curl`, `tar`, heredocs die
+  direct in de terminal worden uitgevoerd).
+- **Termius' SFTP/bestandsoverdracht werkt niet vanaf de iPhone** voor dit
+  account (reden onbekend — niet verder onderzocht). Werkende fallback om
+  een bestand op de Pi te krijgen zonder GitHub of SFTP: `base64 -w0` het
+  bestand, knip dat in stukken van een paar duizend tekens, en plak elk
+  stuk los via `cat > bestand <<'EOF' ... EOF` (eerste stuk) / `cat >>
+  bestand <<'EOF' ... EOF` (volgende stukken), met een `wc -c`-controle na
+  elk stuk. Plak nooit alles in één keer — dat raakt op de iPhone soms
+  stilletjes corrupt (een enkel teken wijzigt, zonder lengteverschil), wat
+  alleen opvalt door de `md5sum` van het resultaat te vergelijken met de
+  brontekst.
+- **Speciale tekens (zoals `|`) zijn lastig te typen op het
+  iPhone-toetsenbord.** Geef daarom altijd complete, kopieerbare
+  commandoblokken — vraag nooit om handmatig een commando met pipes of
+  vlaggen te typen.
 
 ## Afgerond
 

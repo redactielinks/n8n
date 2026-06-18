@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Niet-publieke wiki-site voor de kennisbank.
 
-Leest kennisbank/wiki/*.md en docs/angie/TODO.md rechtstreeks van GitHub
-(raw.githubusercontent.com, geen API-rate-limit), bouwt de paginastructuur
-door vanuit wiki/index.md de markdown-links te volgen (dezelfde regel als
-de "geen wees-pagina's"-controle in kennisbank/Claude.md), en serveert dat
+Leest kennisbank/wiki/*.md rechtstreeks van de lokale schijf (de kennisbank
+staat alleen op deze Pi, nooit op GitHub) en docs/angie/TODO.md van GitHub
+(raw.githubusercontent.com, geen API-rate-limit — dit is alleen
+projectstatus, geen persoonlijke inhoud). Bouwt de paginastructuur door
+vanuit wiki/index.md de markdown-links te volgen (dezelfde regel als de
+"geen wees-pagina's"-controle in kennisbank/Claude.md), en serveert dat
 als mobielvriendelijke HTML met een zoekfunctie. Geen database, geen
 externe packages: alleen de Python-standaardbibliotheek.
 
@@ -25,6 +27,7 @@ OWNER = "redactielinks"
 REPO = "n8n"
 BRANCH = "claude/angie-https-tunnel-foss-hfqqzl"
 RAW_BASE = f"https://raw.githubusercontent.com/{OWNER}/{REPO}/{BRANCH}/"
+KENNISBANK_DIR = os.environ.get("KENNISBANK_DIR", os.path.expanduser("~/kennisbank"))
 WIKI_ROOT = "kennisbank/wiki/index.md"
 TODO_PATH = "docs/angie/TODO.md"
 PORT = 8090
@@ -43,6 +46,17 @@ def fetch_raw(path):
         return None
 
 
+def fetch_local_wiki(path):
+    """Leest een kennisbank/wiki/*.md-pad van de lokale schijf (nooit GitHub)."""
+    rel = path[len("kennisbank/"):]
+    full = os.path.join(KENNISBANK_DIR, rel)
+    try:
+        with open(full, "r", encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
 LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 
 
@@ -56,7 +70,7 @@ def crawl_wiki():
         if path in seen:
             continue
         seen.add(path)
-        text = fetch_raw(path)
+        text = fetch_local_wiki(path)
         if text is None:
             continue
         pages[path] = text
@@ -265,7 +279,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if route == "/":
             if not pages:
-                self._send_html(render_page("Wiki", "<p>Kan de wiki nu niet laden vanaf GitHub. Probeer het later opnieuw.</p>"), status=503)
+                self._send_html(render_page("Wiki", f"<p>Kan de wiki nu niet laden vanaf {html.escape(KENNISBANK_DIR)}. Probeer het later opnieuw.</p>"), status=503)
                 return
             todo_html = markdown_to_html(todo, base_dir="docs/angie")
             index_path = WIKI_ROOT
