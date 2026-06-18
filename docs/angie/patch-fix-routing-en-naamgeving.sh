@@ -63,19 +63,23 @@ for node in wf['nodes']:
         print(f"  ~ hernoemd: {old} -> {RENAME[old]}")
 
 def rename_in_connections(conns):
+    # Echte n8n-structuur: connections[bron] = {"main": [[{node,type,index}, ...], [...]]}
     new_conns = {}
-    for src, outputs in conns.items():
+    for src, conn_types in conns.items():
         new_src = RENAME.get(src, src)
-        new_outputs = []
-        for output in outputs:
-            new_output = []
-            for conn in output:
-                conn = dict(conn)
-                if conn.get('node') in RENAME:
-                    conn['node'] = RENAME[conn['node']]
-                new_output.append(conn)
-            new_outputs.append(new_output)
-        new_conns[new_src] = new_outputs
+        new_conn_types = {}
+        for conn_type, outputs in conn_types.items():
+            new_outputs = []
+            for output in outputs:
+                new_output = []
+                for conn in output:
+                    conn = dict(conn)
+                    if conn.get('node') in RENAME:
+                        conn['node'] = RENAME[conn['node']]
+                    new_output.append(conn)
+                new_outputs.append(new_output)
+            new_conn_types[conn_type] = new_outputs
+        new_conns[new_src] = new_conn_types
     return new_conns
 
 wf['connections'] = rename_in_connections(wf['connections'])
@@ -84,7 +88,7 @@ wf['connections'] = rename_in_connections(wf['connections'])
 # direct naar de wiki-commandoherkenning (die zelf al vrije tekst, spraak
 # en alle slash-commando's afvangt), zodat vrije tekst niet meer in de
 # oude, kapotte Secretaresse/OpenRouter-tak verdwijnt.
-wf['connections']['Voice or Text'] = [[{'node': 'Is Wiki Commando?', 'type': 'main', 'index': 0}]]
+wf['connections']['Voice or Text'] = {'main': [[{'node': 'Is Wiki Commando?', 'type': 'main', 'index': 0}]]}
 print("  ~ 'Voice or Text' koppelt nu direct aan 'Is Wiki Commando?' (oude 'Is commando?'-poort omzeild)")
 
 with open('/tmp/sec-modified.json', 'w', encoding='utf-8') as f:
