@@ -18,6 +18,7 @@ set -euo pipefail
 
 APP_DIR="/home/redactielinks/wiki-site"
 APP_URL="https://raw.githubusercontent.com/redactielinks/n8n/claude/angie-https-tunnel-foss-hfqqzl/docs/angie/wiki-site/app.py"
+TODO_URL="https://raw.githubusercontent.com/redactielinks/n8n/claude/angie-https-tunnel-foss-hfqqzl/docs/angie/TODO.md"
 PORT=8090
 
 echo "============================================================"
@@ -29,6 +30,11 @@ echo "==> app.py downloaden..."
 mkdir -p "$APP_DIR"
 curl -fsSL -o "${APP_DIR}/app.py" "$APP_URL"
 echo "    Opgeslagen in ${APP_DIR}/app.py"
+
+echo ""
+echo "==> TODO.md downloaden (eenmalig — daarna leest de site 'm lokaal,"
+echo "    verversen kan later met refresh-todo.sh)..."
+curl -fsSL -o "${APP_DIR}/TODO.md" "$TODO_URL"
 
 echo ""
 echo "==> Bestaande container (indien aanwezig) opruimen..."

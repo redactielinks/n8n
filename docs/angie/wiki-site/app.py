@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Niet-publieke wiki-site voor de kennisbank.
 
-Leest kennisbank/wiki/*.md rechtstreeks van de lokale schijf (de kennisbank
-staat alleen op deze Pi, nooit op GitHub) en docs/angie/TODO.md van GitHub
-(raw.githubusercontent.com, geen API-rate-limit — dit is alleen
-projectstatus, geen persoonlijke inhoud). Bouwt de paginastructuur door
-vanuit wiki/index.md de markdown-links te volgen (dezelfde regel als de
-"geen wees-pagina's"-controle in kennisbank/Claude.md), en serveert dat
-als mobielvriendelijke HTML met een zoekfunctie. Geen database, geen
-externe packages: alleen de Python-standaardbibliotheek.
+Leest alles rechtstreeks van de lokale schijf: kennisbank/wiki/*.md (staat
+alleen op deze Pi, nooit op GitHub) en TODO.md (een lokale kopie naast
+app.py, ververst met refresh-todo.sh wanneer nodig). Geen netwerkverkeer
+meer terwijl de site draait — werkt ook zonder internetverbinding. Bouwt
+de paginastructuur door vanuit wiki/index.md de markdown-links te volgen
+(dezelfde regel als de "geen wees-pagina's"-controle in
+kennisbank/Claude.md), en serveert dat als mobielvriendelijke HTML met een
+zoekfunctie. Geen database, geen externe packages: alleen de Python-
+standaardbibliotheek.
 
 Bedoeld om uitsluitend bereikbaar te zijn via `tailscale serve` (tailnet-
 only), nooit via `tailscale funnel` (publiek internet).
@@ -18,18 +19,12 @@ import os
 import re
 import threading
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-OWNER = "redactielinks"
-REPO = "n8n"
-BRANCH = "claude/angie-https-tunnel-foss-hfqqzl"
-RAW_BASE = f"https://raw.githubusercontent.com/{OWNER}/{REPO}/{BRANCH}/"
 KENNISBANK_DIR = os.environ.get("KENNISBANK_DIR", os.path.expanduser("~/kennisbank"))
 WIKI_ROOT = "kennisbank/wiki/index.md"
-TODO_PATH = "docs/angie/TODO.md"
+TODO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "TODO.md")
 PORT = 8090
 CACHE_TTL = 300  # seconden
 
@@ -37,12 +32,12 @@ _cache_lock = threading.Lock()
 _cache = {"pages": {}, "todo": "", "built_at": 0.0}
 
 
-def fetch_raw(path):
-    url = RAW_BASE + urllib.parse.quote(path)
+def fetch_local_todo():
+    """Leest de lokale TODO.md-kopie naast app.py (nooit GitHub)."""
     try:
-        with urllib.request.urlopen(url, timeout=8) as resp:
-            return resp.read().decode("utf-8")
-    except urllib.error.URLError:
+        with open(TODO_PATH, "r", encoding="utf-8") as f:
+            return f.read()
+    except OSError:
         return None
 
 
@@ -91,7 +86,7 @@ def get_cache():
     with _cache_lock:
         if time.time() - _cache["built_at"] > CACHE_TTL:
             pages = crawl_wiki()
-            todo = fetch_raw(TODO_PATH) or "_TODO.md kon niet geladen worden._"
+            todo = fetch_local_todo() or "_TODO.md kon niet geladen worden._"
             if pages:
                 _cache["pages"] = pages
                 _cache["todo"] = todo

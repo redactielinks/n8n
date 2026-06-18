@@ -60,6 +60,15 @@ klaarstaat, zodat oppakken straks één commando is.
 
 ## Afgerond
 
+- ~~Kennisbank-inhoud van GitHub naar de Pi verplaatst, git-geschiedenis
+  opgeschoond~~ — de wiki-site las kennisbank-pagina's eerst van GitHub,
+  nu rechtstreeks van lokale schijf; de map is uit de werkende git-tree
+  én uit alle 85 branch-commits verwijderd (lokale veiligheidstag
+  achteraf ook verwijderd, na verificatie). 18 juni 2026.
+- ~~Wiki-site volledig lokaal: TODO.md niet meer live van GitHub
+  gelezen~~ — leest nu een lokale kopie naast app.py, te verversen met
+  `refresh-todo.sh`. Geen doorlopend netwerkverkeer meer terwijl de site
+  draait. 18 juni 2026.
 - ~~Overstap van lokaal LLM (Gemma/Mac Mini) naar OpenRouter/Mistral~~ —
   17 juni 2026.
 - ~~OpenRouter-credential decryptiefout~~ — 17 juni 2026.
