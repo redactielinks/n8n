@@ -107,6 +107,41 @@ def get_cache():
         return _cache["pages"], _cache["todo"], _cache["mtimes"]
 
 
+def invalidate_cache():
+    with _cache_lock:
+        _cache["built_at"] = 0.0
+
+
+def remove_links_to(pages, deleted_path):
+    """Knipt regels die naar deleted_path linken uit alle andere wiki-
+    bestanden (bijv. de bullet in een categoriepagina), zodat verwijderen
+    geen dode links achterlaat."""
+    for path, text in pages.items():
+        if path == deleted_path:
+            continue
+        base_dir = os.path.dirname(path)
+        new_lines = []
+        changed = False
+        for line in text.split("\n"):
+            targets = [t.strip() for _label, t in LINK_RE.findall(line)]
+            points_to_deleted = any(
+                not t.startswith(("http://", "https://", "#"))
+                and t.endswith(".md")
+                and os.path.normpath(os.path.join(base_dir, t)) == deleted_path
+                for t in targets
+            )
+            if points_to_deleted:
+                changed = True
+                continue
+            new_lines.append(line)
+        if changed:
+            try:
+                with open(local_wiki_path(path), "w", encoding="utf-8") as f:
+                    f.write("\n".join(new_lines))
+            except OSError:
+                pass
+
+
 def wiki_path_to_route(path):
     rel = path[len("kennisbank/wiki/"):-len(".md")]
     return "" if rel == "index" else rel
@@ -245,6 +280,16 @@ PAGE_TEMPLATE = """<!doctype html>
   }}
   .result {{ margin-bottom: 1rem; }}
   .result .snippet {{ color: #666; font-size: 0.92rem; }}
+  .page-actions {{
+    display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center;
+    margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #999;
+  }}
+  .page-actions form {{ margin: 0; }}
+  .page-actions button {{
+    padding: 0.5rem 0.9rem; font-size: 0.95rem; border-radius: 8px;
+    border: 1px solid #999; background: transparent; color: #0a5ea8;
+  }}
+  .page-actions button.danger {{ border-color: #c33; color: #c33; }}
 </style>
 </head>
 <body>
@@ -257,6 +302,23 @@ PAGE_TEMPLATE = """<!doctype html>
   <a href="/todo">Todo</a>
 </div>
 {body}
+<script>
+function copyRaw(id, btn) {{
+  var el = document.getElementById(id);
+  navigator.clipboard.writeText(el.value).then(function() {{
+    var orig = btn.textContent;
+    btn.textContent = 'Gekopieerd';
+    setTimeout(function() {{ btn.textContent = orig; }}, 1500);
+  }});
+}}
+function shareRaw(id) {{
+  var el = document.getElementById(id);
+  navigator.share({{ text: el.value }});
+}}
+document.querySelectorAll('.share-btn').forEach(function(b) {{
+  if (navigator.share) b.hidden = false;
+}});
+</script>
 </body>
 </html>"""
 
@@ -272,6 +334,24 @@ def render_search_form(query=""):
         f'<input type="text" name="q" value="{q}" placeholder="Zoek in de wiki...">'
         f'<button type="submit">Zoek</button></form>'
     )
+
+
+def render_page_actions(route, raw_text):
+    """Kopieer/deel-knoppen (rauwe markdown, opmaak blijft behouden) en een
+    verwijderknop, voor onder een losse wiki-pagina."""
+    raw_id = "raw-" + re.sub(r"[^a-zA-Z0-9_-]", "-", route)
+    escaped = html.escape(raw_text)
+    route_attr = html.escape(route, quote=True)
+    return f"""
+<div class="page-actions">
+  <textarea id="{raw_id}" hidden>{escaped}</textarea>
+  <button type="button" onclick="copyRaw('{raw_id}', this)">Kopieer</button>
+  <button type="button" class="share-btn" onclick="shareRaw('{raw_id}')" hidden>Delen</button>
+  <form method="post" action="/verwijder" onsubmit="return confirm('Deze pagina definitief verwijderen?');">
+    <input type="hidden" name="route" value="{route_attr}">
+    <button type="submit" class="danger">Verwijderen</button>
+  </form>
+</div>"""
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -361,7 +441,37 @@ class Handler(BaseHTTPRequestHandler):
             base_dir = os.path.dirname(wiki_path)
             content_html = markdown_to_html(text, base_dir=base_dir)
             title = extract_title(text, wiki_route)
+            if wiki_path != WIKI_ROOT and wiki_route not in CATEGORY_SLUGS:
+                content_html += render_page_actions(wiki_route, text)
             self._send_html(render_page(title, content_html))
+            return
+
+        self._send_html(render_page("Niet gevonden", "<p>Pagina niet gevonden.</p>"), status=404)
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        route = parsed.path
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        raw_body = self.rfile.read(length).decode("utf-8") if length else ""
+        params = urllib.parse.parse_qs(raw_body)
+
+        if route == "/verwijder":
+            wiki_route = (params.get("route") or [""])[0]
+            wiki_path = route_to_wiki_path(wiki_route)
+            pages, _todo, _mtimes = get_cache()
+            if wiki_path == WIKI_ROOT or wiki_route in CATEGORY_SLUGS or wiki_path not in pages:
+                self._send_html(render_page("Kan niet verwijderen", "<p>Deze pagina kan niet verwijderd worden.</p>"), status=400)
+                return
+            try:
+                os.remove(local_wiki_path(wiki_path))
+            except OSError as e:
+                self._send_html(render_page("Verwijderen mislukt", f"<p>Verwijderen is niet gelukt: {html.escape(str(e))}. Mogelijk is de kennisbank-map read-only gemount.</p>"), status=500)
+                return
+            remove_links_to(pages, wiki_path)
+            invalidate_cache()
+            self.send_response(303)
+            self.send_header("Location", "/")
+            self.end_headers()
             return
 
         self._send_html(render_page("Niet gevonden", "<p>Pagina niet gevonden.</p>"), status=404)

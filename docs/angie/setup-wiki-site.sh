@@ -46,7 +46,7 @@ echo ""
 echo "==> Container starten op poort ${PORT}..."
 docker run -d --name wiki-site --restart always -p "${PORT}:${PORT}" \
     -v "${APP_DIR}:/app" -w /app \
-    -v "${KENNISBANK_DIR}:${KENNISBANK_DIR}:ro" \
+    -v "${KENNISBANK_DIR}:${KENNISBANK_DIR}" \
     -e "KENNISBANK_DIR=${KENNISBANK_DIR}" \
     python:3-slim python3 app.py
 
