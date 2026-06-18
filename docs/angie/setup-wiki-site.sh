@@ -17,6 +17,7 @@
 set -euo pipefail
 
 APP_DIR="/home/redactielinks/wiki-site"
+KENNISBANK_DIR="/home/redactielinks/kennisbank"
 APP_URL="https://raw.githubusercontent.com/redactielinks/n8n/claude/angie-https-tunnel-foss-hfqqzl/docs/angie/wiki-site/app.py"
 TODO_URL="https://raw.githubusercontent.com/redactielinks/n8n/claude/angie-https-tunnel-foss-hfqqzl/docs/angie/TODO.md"
 PORT=8090
@@ -45,6 +46,8 @@ echo ""
 echo "==> Container starten op poort ${PORT}..."
 docker run -d --name wiki-site --restart always -p "${PORT}:${PORT}" \
     -v "${APP_DIR}:/app" -w /app \
+    -v "${KENNISBANK_DIR}:${KENNISBANK_DIR}:ro" \
+    -e "KENNISBANK_DIR=${KENNISBANK_DIR}" \
     python:3-slim python3 app.py
 
 echo ""
