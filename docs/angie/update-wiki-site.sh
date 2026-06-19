@@ -33,13 +33,14 @@ echo "    Opgeslagen in ${APP_DIR}/app.py"
 
 echo ""
 echo "==> Container herstarten met schrijftoegang tot de kennisbank..."
+echo "    (installeert ook pypdf, voor het uploaden van PDF-recepten)"
 docker stop wiki-site 2>/dev/null || true
 docker rm wiki-site 2>/dev/null || true
 docker run -d --name wiki-site --restart always -p "${PORT}:${PORT}" \
     -v "${APP_DIR}:/app" -w /app \
     -v "${KENNISBANK_DIR}:${KENNISBANK_DIR}" \
     -e "KENNISBANK_DIR=${KENNISBANK_DIR}" \
-    python:3-slim python3 app.py
+    python:3-slim bash -c "pip install --quiet --no-cache-dir pypdf && python3 app.py"
 
 echo ""
 echo "==> Wachten tot de site opstart..."

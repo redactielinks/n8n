@@ -8,13 +8,17 @@ meer terwijl de site draait — werkt ook zonder internetverbinding. Bouwt
 de paginastructuur door vanuit wiki/index.md de markdown-links te volgen
 (dezelfde regel als de "geen wees-pagina's"-controle in
 kennisbank/Claude.md), en serveert dat als mobielvriendelijke HTML met een
-zoekfunctie. Geen database, geen externe packages: alleen de Python-
-standaardbibliotheek.
+zoekfunctie. Geen database, alleen de Python-standaardbibliotheek — met
+een enkele uitzondering: het uploaden van een PDF-recept (vanaf de iPhone)
+gebruikt de externe package "pypdf" om de tekst eruit te halen, zie
+extract_upload_text() en de docker run-commando's in setup-wiki-site.sh /
+update-wiki-site.sh die deze installeren.
 
 Bedoeld om uitsluitend bereikbaar te zijn via `tailscale serve` (tailnet-
 only), nooit via `tailscale funnel` (publiek internet).
 """
 import html
+import io
 import json
 import os
 import re
@@ -69,6 +73,47 @@ def call_whisper(audio_bytes):
     with urllib.request.urlopen(req, timeout=CHAT_HTTP_TIMEOUT) as resp:
         data = json.loads(resp.read().decode("utf-8"))
     return data.get("text", "")
+
+
+class UploadDecodeError(Exception):
+    """Geeft een voor de gebruiker leesbare reden waarom een geupload
+    bestand niet naar tekst omgezet kon worden."""
+
+
+def extract_upload_text(raw_bytes, filename):
+    """Zet een geupload bestand om naar platte tekst. PDF (herkend aan de
+    %PDF-magic bytes, niet aan de bestandsnaam) gaat via pypdf; alles
+    anders moet gewoon leesbare UTF-8-tekst zijn (.txt/.md)."""
+    if raw_bytes[:5] == b"%PDF-":
+        try:
+            import pypdf
+        except ImportError:
+            raise UploadDecodeError(
+                "PDF-ondersteuning is niet geinstalleerd in deze container. "
+                "Draai update-wiki-site.sh opnieuw op de Pi (die installeert pypdf)."
+            )
+        try:
+            reader = pypdf.PdfReader(io.BytesIO(raw_bytes))
+            text = "\n\n".join(page.extract_text() or "" for page in reader.pages)
+        except Exception as e:
+            raise UploadDecodeError(f"PDF '{filename}' kon niet gelezen worden ({e}).")
+        text = text.strip()
+        if not text:
+            raise UploadDecodeError(
+                f"Geen tekst gevonden in '{filename}' — dit is waarschijnlijk een gescande "
+                "PDF (foto's van tekst, geen echte tekstlaag). Daar is geen OCR/vision-model "
+                "voor gekoppeld, dus typ of plak de inhoud zelf."
+            )
+        return text
+    try:
+        return raw_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        raise UploadDecodeError(
+            f"'{filename}' is geen leesbaar tekstbestand. Tekstbestanden (.txt/.md) en "
+            "PDF's met een tekstlaag kunnen verwerkt worden — foto's nog niet, daarvoor is "
+            "geen vision-model gekoppeld."
+        )
+
 
 _cache_lock = threading.Lock()
 _cache = {"pages": {}, "todo": "", "mtimes": {}, "built_at": 0.0}
@@ -433,7 +478,7 @@ CHAT_HTML = """
     <textarea id="chat-text" rows="1" placeholder="Schrijf iets, bv. /taken of een vraag..."></textarea>
     <button type="button" id="chat-mic" class="secondary" title="Inspreken">&#127908;</button>
     <button type="button" id="chat-upload-btn" class="secondary" title="Bestand uploaden">&#128206;</button>
-    <input type="file" id="chat-file" hidden accept=".txt,.md,.markdown,text/plain">
+    <input type="file" id="chat-file" hidden accept=".txt,.md,.markdown,text/plain,.pdf,application/pdf">
     <button type="button" id="chat-send" title="Versturen">&#10148;</button>
   </div>
   <p id="chat-status" class="chat-status"></p>
@@ -699,15 +744,9 @@ class Handler(BaseHTTPRequestHandler):
                     self._send_json({"error": "Geen bestand ontvangen."}, status=400)
                     return
                 try:
-                    text = raw_bytes.decode("utf-8")
-                except UnicodeDecodeError:
-                    self._send_json({
-                        "error": (
-                            f"'{html.escape(filename)}' is geen leesbaar tekstbestand. "
-                            "Alleen tekstbestanden (.txt/.md) kunnen nu verwerkt worden — "
-                            "foto's nog niet, daarvoor is geen vision-model gekoppeld."
-                        ),
-                    }, status=415)
+                    text = extract_upload_text(raw_bytes, filename)
+                except UploadDecodeError as e:
+                    self._send_json({"error": html.escape(str(e))}, status=415)
                     return
                 message = f"Bestand ontvangen ({filename}):\n\n{text[:4000]}"
                 reply = call_n8n_cli(message)

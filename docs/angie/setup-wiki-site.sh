@@ -44,11 +44,12 @@ docker rm wiki-site 2>/dev/null || true
 
 echo ""
 echo "==> Container starten op poort ${PORT}..."
+echo "    (installeert ook pypdf, voor het uploaden van PDF-recepten)"
 docker run -d --name wiki-site --restart always -p "${PORT}:${PORT}" \
     -v "${APP_DIR}:/app" -w /app \
     -v "${KENNISBANK_DIR}:${KENNISBANK_DIR}" \
     -e "KENNISBANK_DIR=${KENNISBANK_DIR}" \
-    python:3-slim python3 app.py
+    python:3-slim bash -c "pip install --quiet --no-cache-dir pypdf && python3 app.py"
 
 echo ""
 echo "==> Tailscale serve activeren (alleen voor jouw tailnet, geen funnel)..."
