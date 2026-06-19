@@ -1,16 +1,22 @@
 #!/bin/bash
 # Herstelt de OpenRouter-credential die niet meer ontsleuteld kan worden
 # (de encryptiesleutel in ~/.n8n/config is na het aanmaken van de
-# credential overschreven, waarschijnlijk tijdens de HTTPS-tunnel setup).
+# credential overschreven -- meest recent doordat een eerdere n8n-herstart
+# de sleutel niet expliciet meegaf aan docker run, waarna n8n een nieuwe
+# sleutel ging gebruiken).
 #
 # Je OpenRouter API-key wordt hier alleen lokaal op de Pi ingetypt
 # (verborgen invoer) en gaat nooit ergens anders naartoe.
 set -euo pipefail
 
+SCRIPT_VERSIE="2026-06-19-fix-openrouter-credential-2"
+echo "==> Scriptversie: ${SCRIPT_VERSIE} (regel-aantal: $(wc -l < "${BASH_SOURCE[0]}"))"
+
 CRED_ID="oITPdZPojDOLJaCJ"
 CRED_NAME="OpenRouter account"
 CONFIG="/home/redactielinks/.n8n/config"
 DB="/home/redactielinks/.n8n/database.sqlite"
+KENNISBANK_DIR="/home/redactielinks/kennisbank"
 
 echo "============================================================"
 echo "  Herstel OpenRouter-credential"
@@ -54,6 +60,7 @@ docker rm n8n
 docker run -d --name n8n --restart always -p 5678:5678 \
     -v /home/redactielinks/.n8n:/home/node/.n8n \
     -v /home/redactielinks/n8n-obsidian-share:/home/node/obsidian-share \
+    -v "${KENNISBANK_DIR}:${KENNISBANK_DIR}" \
     -e N8N_SECURE_COOKIE=false \
     -e WEBHOOK_URL="${WEBHOOK_URL}" \
     -e N8N_ENCRYPTION_KEY="${CURRENT_KEY}" \
@@ -65,5 +72,6 @@ sleep 8 && docker logs n8n --tail 5
 
 echo ""
 echo "============================================================"
-echo "  Klaar. Test nu in Telegram een gewoon zinnetje zonder /."
+echo "  Klaar. Test nu in de wiki-chat of via de CLI-webhook een gewoon"
+echo "  zinnetje (Telegram wordt niet meer gebruikt)."
 echo "============================================================"
