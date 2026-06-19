@@ -14,6 +14,15 @@ is de lijst met *openstaande* punten met een klaarstaand script.
 ## Vaste instructies van de gebruiker
 
 - **Antwoord altijd in het Nederlands.**
+- **De gebruiker heeft geen eigen bedrijf/onderneming** (geen zzp, geen btw-
+  aangifte). Fiscaal advies in patches/prompts mag dus nooit uitgaan van
+  zakelijke kostenaftrek — alleen de specifieke wettelijke persoonlijke
+  aftrekposten (giften aan een ANBI, hypotheekrente, niet-vergoede
+  zorgkosten boven de drempel, e.d.) zijn relevant. Eerdere bug: het
+  fiscale prompt in `verwerkFinancieelDocument` ging hier ten onrechte van
+  uit ("zelfstandig ondernemer/particulier") en adviseerde "vermoedelijk
+  zakelijk aftrekbaar" voor een gewone verzekeringspolis — gefixt in
+  `patch-fiscaal-particulier-en-llm-retry.sh`.
 - "Ik wil dat je perfect werkt, dus geen schoonheidsfoutjes — die moet je
   altijd oplossen." Kleine/cosmetische bugs proactief fixen, niet alleen
   signaleren.
@@ -86,6 +95,15 @@ staat zonder dat bevestigd te zien.
     van Hermes is hier irrelevant, dit zijn platte completions.
 - Kennisbank-inhoud staat alleen lokaal op de Pi (`~/kennisbank`) — bewust
   nooit naar GitHub gepusht (uit git-historie verwijderd).
+- Bij een mislukte LLM-aanroep in "Verwerk Wiki Commando" wordt sinds
+  `patch-fiscaal-particulier-en-llm-retry.sh` één keer automatisch
+  opnieuw geprobeerd (na 2s, via `metRetry`) — tijdelijke OpenRouter-
+  rate-limits (HTTP 429) bij meerdere documenten kort na elkaar waren een
+  waarschijnlijke oorzaak van losse mislukkingen. Lukt het dan nog niet,
+  dan staat de échte foutmelding (bv. "HTTP 429: ...") in de tip-tekst in
+  plaats van de oude vage "LLM niet bereikbaar of timeout" — belangrijk
+  omdat ik geen Pi-/dockerlogtoegang heb en anders blind moet gokken naar
+  de oorzaak.
 - Openstaande/bekende issues: zie `docs/angie/TODO.md`.
 - Bekende, nog niet opgeloste bevinding: het Telegram-bottoken staat in
   plaintext gecommit in `patch-facturen-bijlagen-en-fiscale-tips.sh`. Laag
