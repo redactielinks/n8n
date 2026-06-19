@@ -28,6 +28,14 @@
 #    proactieve tip, plus een vaste herinnering aan de wettelijke
 #    bewaarplicht (7 jaar) en een disclaimer dat dit geen fiscaal advies is.
 #
+# Bevat ook de latere verbeteringen (gebundeld, voor een schone installatie
+# in 1 keer): deterministische herkenning van tickets/garantie/verzekeringen
+# (naast facturen/recepten), een "factuur"-regex zonder woordgrens-bug (matcht
+# ook "factuurnummer"), en echte LLM-gegenereerde korte titels (titel_kort /
+# genereerKorteTitel) in plaats van kale tekst-afkapping. Draait dit script
+# al op een bestaande installatie? Gebruik dan
+# patch-rubrieken-en-llm-titels.sh, die voegt alleen die verbeteringen toe.
+#
 # Vereist dat patch-persoonlijke-rubrieken.sh al is uitgevoerd (anders
 # bestaat SIMPELE_RUBRIEKEN nog niet om uit te breiden).
 #
@@ -158,6 +166,33 @@ function cleanPreview(s) {
   return String(s).replace(/\s+/g, ' ').trim();
 }
 
+// De eerste tekstregel van een document (aanhef van een brief, kopregel van
+// een bon) beschrijft zelden waar het document over gaat -- vandaar een
+// echte LLM-samenvatting in plaats van kaal afkappen. Kort en met een eigen
+// (kleinere) timeout, want dit mag niet de hele opslag laten mislukken.
+async function genereerKorteTitel(content) {
+  const fallback = cleanPreview(content).substring(0, 60);
+  try {
+    const llmData = await httpRequest({
+      method: 'POST', url: LLM_URL,
+      headers: { 'Content-Type': 'application/json' },
+      body: {
+        model: 'google/gemma-3-4b',
+        messages: [{
+          role: 'system',
+          content: 'Geef een korte titel (max 8 woorden) die samenvat waar de tekst van de gebruiker over gaat. Antwoord met alleen de titel zelf, in het Nederlands, zonder aanhalingstekens, zonder opmaak, zonder uitleg.'
+        }, { role: 'user', content: content.substring(0, 2000) }],
+        stream: false, temperature: 0.2,
+      },
+      json: true, timeout: 20000,
+    });
+    const titel = (llmData?.choices?.[0]?.message?.content || '').replace(/^["'`]+|["'`]+$/g, '').trim();
+    return titel ? cleanPreview(titel).substring(0, 70) : fallback;
+  } catch (e) {
+    return fallback;
+  }
+}
+
 // Het origineel van een geupload bestand (bv. een PDF-factuur) staat tot
 // hier in een staging-map (zie save_attachment() in app.py) -- nodig omdat
 // tekstextractie lossy is en je voor de belastingdienst/garantie het
@@ -198,7 +233,7 @@ async function verwerkFinancieelDocument(content) {
   const defaults = {
     leverancier: '', factuurdatum: '', factuurnummer: '',
     bedrag_excl_btw: '', btw_percentage: '', btw_bedrag: '', bedrag_incl_btw: '',
-    categorie_fiscaal: '', aftrekbaar: 'onbekend',
+    categorie_fiscaal: '', aftrekbaar: 'onbekend', titel_kort: '',
     tip: 'Kon niet automatisch geanalyseerd worden (LLM niet bereikbaar of timeout) -- controleer zelf het bedrag en de btw.',
   };
   try {
@@ -209,7 +244,12 @@ async function verwerkFinancieelDocument(content) {
         model: 'google/gemma-3-4b',
         messages: [{
           role: 'system',
-          content: 'Je bent een Nederlandse boekhoudkundig en fiscaal assistent voor een zelfstandig ondernemer/particulier. Je krijgt de tekst van een factuur, bon, ticket of ander document. Antwoord uitsluitend als JSON (geen markdown). Velden: {"leverancier":"naam leverancier/winkel/maatschappij, of leeg","factuurdatum":"YYYY-MM-DD indien herkenbaar, anders de datum zoals vermeld, of leeg","factuurnummer":"factuur-, bon- of ticketnummer, of leeg","bedrag_excl_btw":"bedrag exclusief btw als getal met punt, of leeg","btw_percentage":"21|9|0|onbekend","btw_bedrag":"btw-bedrag als getal met punt, of leeg","bedrag_incl_btw":"totaalbedrag inclusief btw als getal met punt, of leeg","categorie_fiscaal":"korte kostencategorie, bv. Kantoorkosten, Reiskosten, Representatiekosten, ICT, Vakliteratuur, Verzekering, Aankoop, Overig","aftrekbaar":"ja|nee|deels|onbekend, vanuit het perspectief van een zelfstandig ondernemer met gemengd zakelijk/prive gebruik","tip":"1-2 zinnen praktisch en proactief advies specifiek voor dit document (bv. btw-aftrek, zakelijk vs prive gebruik, garantietermijn, bewaartermijn) -- geen algemeen fiscaal advies herhalen, dat staat al vast in de pagina"}'
+          // "titel_kort" is bewust apart van "leverancier": zonder herkende
+          // leverancier (bv. bij tickets/garantiebewijzen) was de titel
+          // voorheen alleen het kale rubrieklabel of een afgekapte ruwe
+          // tekstregel -- geen van beide beschrijft waar het document
+          // werkelijk over gaat.
+          content: 'Je bent een Nederlandse boekhoudkundig en fiscaal assistent voor een zelfstandig ondernemer/particulier. Je krijgt de tekst van een factuur, bon, ticket of ander document. Antwoord uitsluitend als JSON (geen markdown). Velden: {"titel_kort":"korte titel van max 8 woorden die samenvat waar dit document over gaat, bv. \'Vliegticket KLM Amsterdam-Londen\' of \'Garantiebewijs wasmachine Bosch\', in het Nederlands","leverancier":"naam leverancier/winkel/maatschappij, of leeg","factuurdatum":"YYYY-MM-DD indien herkenbaar, anders de datum zoals vermeld, of leeg","factuurnummer":"factuur-, bon- of ticketnummer, of leeg","bedrag_excl_btw":"bedrag exclusief btw als getal met punt, of leeg","btw_percentage":"21|9|0|onbekend","btw_bedrag":"btw-bedrag als getal met punt, of leeg","bedrag_incl_btw":"totaalbedrag inclusief btw als getal met punt, of leeg","categorie_fiscaal":"korte kostencategorie, bv. Kantoorkosten, Reiskosten, Representatiekosten, ICT, Vakliteratuur, Verzekering, Aankoop, Overig","aftrekbaar":"ja|nee|deels|onbekend, vanuit het perspectief van een zelfstandig ondernemer met gemengd zakelijk/prive gebruik","tip":"1-2 zinnen praktisch en proactief advies specifiek voor dit document (bv. btw-aftrek, zakelijk vs prive gebruik, garantietermijn, bewaartermijn) -- geen algemeen fiscaal advies herhalen, dat staat al vast in de pagina"}'
         }, { role: 'user', content }],
         stream: false, temperature: 0.2,
       },
@@ -243,10 +283,13 @@ async function slaFinancieelDocumentOp(rubriek, label, content, bijlagePad) {
   // Zonder leverancier moet de kop toch beschrijven waar de pagina over
   // gaat -- anders is de titel alleen het rubrieklabel (bv. "Administratie"),
   // en laat "Recent toegevoegd" op de wiki-homepage dan voor elk document
-  // dezelfde naam zien zonder enig idee wat erin staat.
+  // dezelfde naam zien zonder enig idee wat erin staat. "titel_kort" komt
+  // van het LLM en beschrijft de inhoud echt (bv. "Vliegticket KLM
+  // Amsterdam-Londen"); alleen als zelfs dat leeg is (LLM-timeout) valt het
+  // terug op een ruwe tekst-afkapping.
   const titel = analyse.leverancier
     ? label + ': ' + analyse.leverancier
-    : label + ': ' + cleanPreview(content).substring(0, 50);
+    : label + ': ' + (analyse.titel_kort || cleanPreview(content).substring(0, 50));
   const samenvattingRegels = [
     analyse.leverancier ? '- Leverancier: ' + analyse.leverancier : '',
     analyse.factuurdatum ? '- Datum: ' + analyse.factuurdatum : '',
@@ -339,9 +382,26 @@ const lijktOpRecept = /ingredi[eë]nten/i.test(text) && /bereidings?wijze|bereid
 // juist de meest voorkomende factuurtekst.
 const lijktOpFactuur = /factuur|invoice|\bbon(nummer)?\b|\bnota\b|kwitantie|kassabon/i.test(text)
   && /btw|vat|totaalbedrag|total amount|factuurnummer|invoice number|te betalen|bedrag/i.test(text);
+// Zelfde probleem als bij facturen: zonder deterministieke check voor
+// tickets/garantie/verzekeringen hangt de rubriek volledig af van de
+// LLM-classificatie hieronder, die bij lange geextraheerde PDF-tekst kan
+// timeouten en dan altijd op 'notitie' uitkomt -- waardoor deze documenten
+// nooit in hun eigen rubriek belanden.
+const lijktOpTicket = /boarding pass|instapkaart|vluchtnummer|flight number|gate\s*\d|vertrektijd|departure time|stoel(plaats)?\b|seat\b|e-?ticket|treinkaartje|reisbiljet|boekingsnummer|booking reference|\bpnr\b/i.test(text);
+const lijktOpGarantie = /garantie(bewijs|termijn|certificaat|periode)?\b|warranty/i.test(text);
+const lijktOpVerzekering = /polis(nummer)?\b|verzekering(spolis)?\b|premie\b|dekking\b|insurance policy|eigen risico\b/i.test(text);
 const VRIJE_TEKST_INTENTS = ['notitie', 'dagboek', 'idee', 'taak', 'wiki', 'onderzoek', 'braindump', 'recept', 'administratie', 'declaratie', 'tickets', 'kopen', 'garantie', 'verzekeringen'];
 if (!cmdMatchRaw && text && lijktOpRecept) {
   cmd = 'recept';
+  content = text;
+} else if (!cmdMatchRaw && text && lijktOpTicket) {
+  cmd = 'tickets';
+  content = text;
+} else if (!cmdMatchRaw && text && lijktOpGarantie) {
+  cmd = 'garantie';
+  content = text;
+} else if (!cmdMatchRaw && text && lijktOpVerzekering) {
+  cmd = 'verzekeringen';
   content = text;
 } else if (!cmdMatchRaw && text && lijktOpFactuur) {
   cmd = 'administratie';
@@ -359,7 +419,7 @@ if (!cmdMatchRaw && text && lijktOpRecept) {
         }, { role: 'user', content: text }],
         stream: false, temperature: 0.1,
       },
-      json: true, timeout: 30000,
+      json: true, timeout: 45000,
     });
     const raw = llmData?.choices?.[0]?.message?.content || '{}';
     const parsed = JSON.parse(raw.replace(/```json\n?|\n?```/g, '').trim());
@@ -376,8 +436,10 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
   const dir = path.join(KENNISBANK_WIKI, 'persoonlijk', 'notities');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const filename = fileTs + '-notitie.md';
-  const cleanContent = cleanPreview(content);
-  const preview = cleanContent.length > 60 ? cleanContent.substring(0, 60) + '...' : cleanContent;
+  // Een echte LLM-samenvatting in plaats van de eerste tekstregel afkappen --
+  // die eerste regel is vaak een aanhef of kopregel en beschrijft zelden
+  // waar de notitie werkelijk over gaat.
+  const preview = await genereerKorteTitel(content);
   // Vangnet: als een geuploade bijlage (PDF) hier toch belandt omdat de
   // classificatie het niet als factuur/document herkende, gaat het
   // origineel niet stilletjes verloren -- het wordt alsnog gelinkt.
