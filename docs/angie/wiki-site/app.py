@@ -669,8 +669,14 @@ class Handler(BaseHTTPRequestHandler):
             if not pages:
                 self._send_html(render_page("Wiki", f"<p>Kan de wiki nu niet laden vanaf {html.escape(KENNISBANK_DIR)}. Probeer het later opnieuw.</p>"), status=503)
                 return
+            # Categoriepagina's (persoonlijk.md, koken.md, ...) zijn alleen
+            # linkverzamelingen: elke nieuwe pagina daaronder voegt er een
+            # regel aan toe, wat hun mtime steeds opnieuw bijwerkt. Zonder
+            # uitsluiting "wint" zo'n categoriepagina altijd de race om de
+            # recentste wijziging, en verdringt die de échte nieuwe pagina's
+            # (met hun duidelijke titel) uit "Recent toegevoegd".
             recent_paths = sorted(
-                (p for p in pages if p != WIKI_ROOT),
+                (p for p in pages if p != WIKI_ROOT and wiki_path_to_route(p) not in CATEGORY_SLUGS),
                 key=lambda p: mtimes.get(p, 0),
                 reverse=True,
             )[:RECENT_COUNT]
