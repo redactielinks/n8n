@@ -553,7 +553,7 @@ CHAT_HTML = """
     status.textContent = 'Bezig... (kan bij recepten of onderzoek een paar minuten duren)';
     postJson('/api/chat/upload', {
       method: 'POST',
-      headers: {'X-Filename': file.name},
+      headers: {'X-Filename': encodeURIComponent(file.name)},
       body: file
     }).then(onReply).catch(onFail);
     fileInput.value = '';
@@ -739,7 +739,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if route == "/api/chat/upload":
             try:
-                filename = self.headers.get("X-Filename", "bestand")
+                # De bestandsnaam komt percent-encoded binnen (encodeURIComponent
+                # in de browser): Safari op iOS gooit een TypeError zodra een
+                # HTTP-headerwaarde niet-ASCII-tekens bevat (bijv. "Knäckebröd").
+                filename = urllib.parse.unquote(self.headers.get("X-Filename", "bestand"))
                 if not raw_bytes:
                     self._send_json({"error": "Geen bestand ontvangen."}, status=400)
                     return
