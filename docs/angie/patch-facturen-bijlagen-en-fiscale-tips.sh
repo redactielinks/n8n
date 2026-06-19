@@ -36,6 +36,15 @@
 # al op een bestaande installatie? Gebruik dan
 # patch-rubrieken-en-llm-titels.sh, die voegt alleen die verbeteringen toe.
 #
+# 3. Alle LLM-aanroepen in deze node gingen naar de lokale LM Studio op de
+#    Mac Mini -- die draait niet meer. Nu gaan ze via OpenRouter (dezelfde
+#    provider als de hoofdagent), met de al bestaande OpenRouter-credential
+#    (oITPdZPojDOLJaCJ). Het script ontsleutelt die key lokaal op de Pi via
+#    `n8n export:credentials --decrypted` en zet hem alleen in de
+#    workflow-jsCode -- de key komt nooit in git terecht. Draait dit script
+#    al op een bestaande installatie zonder deze fix? Gebruik dan
+#    patch-llm-calls-naar-openrouter.sh.
+#
 # Vereist dat patch-persoonlijke-rubrieken.sh al is uitgevoerd (anders
 # bestaat SIMPELE_RUBRIEKEN nog niet om uit te breiden).
 #
@@ -60,15 +69,31 @@ echo "==> Scriptversie: ${SCRIPT_VERSIE} (regel-aantal: $(wc -l < "${BASH_SOURCE
 
 WF_ID="YdNGeswnhhzFdTFy"
 DB="/home/redactielinks/.n8n/database.sqlite"
+CONFIG="/home/redactielinks/.n8n/config"
 KENNISBANK_DIR="/home/redactielinks/kennisbank"
+
+echo "==> OpenRouter API-key lokaal ontsleutelen (komt nooit in git terecht)..."
+docker exec n8n n8n export:credentials --all --decrypted --output=/tmp/creds-decrypted.json 2>/dev/null
+docker cp n8n:/tmp/creds-decrypted.json /tmp/creds-decrypted.json
+docker exec n8n rm -f /tmp/creds-decrypted.json
+OPENROUTER_API_KEY=$(python3 -c "
+import json
+with open('/tmp/creds-decrypted.json', encoding='utf-8') as f:
+    creds = json.load(f)
+cred = next((c for c in creds if c.get('id') == 'oITPdZPojDOLJaCJ' or c.get('name') == 'OpenRouter account'), None)
+if cred is None:
+    raise SystemExit('OpenRouter-credential niet gevonden -- patch afgebroken.')
+print(cred['data']['apiKey'])
+")
+rm -f /tmp/creds-decrypted.json
 
 echo "==> Exporteren..."
 docker exec n8n n8n export:workflow --all --output=/tmp/sec.json 2>/dev/null
 docker cp n8n:/tmp/sec.json /tmp/sec.json
 
 echo "==> Patchen..."
-python3 - <<'PYEOF_INNER'
-import json
+OPENROUTER_API_KEY="$OPENROUTER_API_KEY" python3 - <<'PYEOF_INNER'
+import json, os
 
 NIEUWE_JS = r"""
 const inp = $input.first().json;
@@ -84,7 +109,14 @@ const https = require('https');
 const { URL } = require('url');
 
 const TELEGRAM_TOKEN = '8622180504:AAF-WK0seg3n8I4VGUS5xo_dQgw9PXGVyUU';
-const LLM_URL = 'http://100.68.46.126:27124/v1/chat/completions';
+// De lokale LLM op de Mac Mini (LM Studio) draait niet meer -- alle
+// LLM-aanroepen in deze node gaan voortaan via OpenRouter (dezelfde
+// provider als de hoofdagent). OPENROUTER_API_KEY_PLACEHOLDER wordt door
+// het patchscript vervangen door de echte, lokaal-op-de-Pi ontsleutelde
+// OpenRouter-key -- die waarde komt nooit in git terecht.
+const LLM_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const LLM_MODEL = 'nousresearch/hermes-4-70b';
+const LLM_API_KEY = 'OPENROUTER_API_KEY_PLACEHOLDER';
 const WHISPER_URL = 'http://100.68.46.126:27125/transcribe';
 const SEARX_BASE = 'http://100.77.5.104:8081/search?format=json&q=';
 
@@ -175,9 +207,9 @@ async function genereerKorteTitel(content) {
   try {
     const llmData = await httpRequest({
       method: 'POST', url: LLM_URL,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + LLM_API_KEY },
       body: {
-        model: 'google/gemma-3-4b',
+        model: LLM_MODEL,
         messages: [{
           role: 'system',
           content: 'Geef een korte titel (max 8 woorden) die samenvat waar de tekst van de gebruiker over gaat. Antwoord met alleen de titel zelf, in het Nederlands, zonder aanhalingstekens, zonder opmaak, zonder uitleg.'
@@ -239,9 +271,9 @@ async function verwerkFinancieelDocument(content) {
   try {
     const llmData = await httpRequest({
       method: 'POST', url: LLM_URL,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + LLM_API_KEY },
       body: {
-        model: 'google/gemma-3-4b',
+        model: LLM_MODEL,
         messages: [{
           role: 'system',
           // "titel_kort" is bewust apart van "leverancier": zonder herkende
@@ -410,9 +442,9 @@ if (!cmdMatchRaw && text && lijktOpRecept) {
   try {
     const llmData = await httpRequest({
       method: 'POST', url: LLM_URL,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + LLM_API_KEY },
       body: {
-        model: 'google/gemma-3-4b',
+        model: LLM_MODEL,
         messages: [{
           role: 'system',
           content: 'Bepaal welke actie het beste past bij dit bericht. Antwoord uitsluitend als JSON: {"intent":"wiki|onderzoek|braindump|idee|taak|dagboek|notitie|recept|administratie|declaratie|tickets|kopen|garantie|verzekeringen"}. wiki = vraag over eigen kennisbank/aantekeningen. onderzoek = vraag die feitelijke informatie van het internet nodig heeft. braindump = een gedachte, brainwave of idee dat verder uitgewerkt en gecheckt moet worden. idee = kort, simpel idee zonder verdere uitwerking. taak = iets dat gedaan moet worden. dagboek = persoonlijke reflectie of dagverslag. recept = een kookrecept, een receptidee, of een lijst ingredienten waar een recept van gemaakt moet worden. administratie = officiele documenten, formulieren, brieven, contracten of belastingzaken. declaratie = onkostendeclaraties of bonnetjes die je later wilt terugvragen. tickets = vlieg-, trein- of evenemententickets en boarding passes. kopen = aankoopbonnen, aankoopbewijzen, of dingen die je wilt kopen of net gekocht hebt. garantie = garantiebewijzen of garantietermijnen van producten. verzekeringen = polissen of verzekeringsdocumenten. notitie = losse aantekening die nergens anders bij past.'
@@ -484,9 +516,9 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
     const llmData = await httpRequest({
       method: 'POST',
       url: LLM_URL,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + LLM_API_KEY },
       body: {
-        model: 'google/gemma-3-4b',
+        model: LLM_MODEL,
         messages: [{
           role: 'system',
           content: 'Antwoord uitsluitend als JSON (geen markdown). Velden: {"titel":"max 60 tekens","samenvatting":"2-3 zinnen","categorie":"Projecten|Zakelijk|Uitvinding|Levensstijl|Kopen|Reizen|Lezen|Gezondheid|Financien","prioriteit":"Laag|Normaal|Hoog","tags":["3-5 trefwoorden"]}'
@@ -573,9 +605,9 @@ Begin je antwoord direct met de titel als "# Titel", zonder inleidende zin ervoo
     try {
       const llmData = await httpRequest({
         method: 'POST', url: LLM_URL,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + LLM_API_KEY },
         body: {
-          model: 'google/gemma-3-4b',
+          model: LLM_MODEL,
           messages: [{ role: 'system', content: REFLUX_PROMPT }, { role: 'user', content }],
           stream: false, temperature: 0.3,
         },
@@ -687,9 +719,9 @@ Begin je antwoord direct met de titel als "# Titel", zonder inleidende zin ervoo
         const llmData = await httpRequest({
           method: 'POST',
           url: LLM_URL,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + LLM_API_KEY },
           body: {
-            model: 'google/gemma-3-4b',
+            model: LLM_MODEL,
             messages: [{
               role: 'system',
               content: 'Je beantwoordt vragen uitsluitend op basis van de meegegeven wiki-inhoud. Schrijf in duidelijk, spreektaalachtig Nederlands, informeel met "je", direct ter zake, korte alinea\'s van max 3-4 regels, geen lange gedachtenstreep, geen emoji, geen clichés. Staat het antwoord niet in de wiki-inhoud, zeg dat dan expliciet in plaats van te gokken.'
@@ -736,9 +768,9 @@ Begin je antwoord direct met de titel als "# Titel", zonder inleidende zin ervoo
         const llmData = await httpRequest({
           method: 'POST',
           url: LLM_URL,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + LLM_API_KEY },
           body: {
-            model: 'google/gemma-3-4b',
+            model: LLM_MODEL,
             messages: [{
               role: 'system',
               content: 'Je krijgt een onderzoeksvraag en zoekresultaten van het internet. Beoordeel welke bronnen betrouwbaar lijken: officiele organisaties, vakliteratuur en bekende media wegen zwaarder dan onbekende sites of forums. Geef een kort, feitelijk antwoord gebaseerd op de betrouwbaarste bronnen, en sluit af met een genummerde lijst van de gebruikte bronnen (titel en link). Schrijf in duidelijk, spreektaalachtig Nederlands, informeel met "je", korte alinea\'s van max 3-4 regels, geen lange gedachtenstreep, geen emoji, geen clichés.'
@@ -804,9 +836,9 @@ Begin je antwoord direct met de titel als "# Titel", zonder inleidende zin ervoo
       const llmData = await httpRequest({
         method: 'POST',
         url: LLM_URL,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + LLM_API_KEY },
         body: {
-          model: 'google/gemma-3-4b',
+          model: LLM_MODEL,
           messages: [{
             role: 'system',
             content: 'Je helpt een geparkeerde gedachte verder te brengen. Antwoord uitsluitend als JSON (geen markdown). Velden: {"verificatie":"2-4 zinnen die inschatten of de gedachte klopt of haalbaar is, gebaseerd op de meegegeven zoekresultaten; zeg expliciet als er geen bronnen zijn","bronnen":["titel (url), max 3"],"ontwikkeling":["3-5 concrete manieren om het idee verder uit te werken"],"brainstorm":["3-5 verwante ideeen of varianten"]}'
@@ -922,6 +954,8 @@ if (viaSpraak) {
 return [{ json: { replyText, chatId, text, source } }];
 """.strip()
 
+NIEUWE_JS = NIEUWE_JS.replace('OPENROUTER_API_KEY_PLACEHOLDER', os.environ['OPENROUTER_API_KEY'])
+
 with open('/tmp/sec.json', encoding='utf-8') as f:
     data = json.load(f)
 
@@ -954,6 +988,7 @@ docker exec n8n n8n import:workflow --input=/tmp/sec-modified.json --overwrite-a
 
 echo "==> Activeren en n8n herstarten met toegang tot de kennisbank..."
 ACTIVE_VID=$(sqlite3 "${DB}" "SELECT versionId FROM workflow_history WHERE workflowId='${WF_ID}' ORDER BY createdAt DESC LIMIT 1;")
+ENC_KEY=$(python3 -c "import json; print(json.load(open('${CONFIG}'))['encryptionKey'])")
 docker stop n8n 2>/dev/null || true
 sqlite3 "${DB}" "UPDATE workflow_entity SET active=1, activeVersionId='${ACTIVE_VID}' WHERE id='${WF_ID}';"
 WEBHOOK_URL=$(tailscale status --json | python3 -c "import sys,json; d=json.load(sys.stdin); print('https://' + d['Self']['DNSName'].rstrip('.'))")
@@ -964,8 +999,10 @@ docker run -d --name n8n --restart always -p 5678:5678 \
     -v "${KENNISBANK_DIR}:${KENNISBANK_DIR}" \
     -e N8N_SECURE_COOKIE=false \
     -e WEBHOOK_URL="${WEBHOOK_URL}" \
+    -e N8N_ENCRYPTION_KEY="${ENC_KEY}" \
     -e NODE_FUNCTION_ALLOW_BUILTIN=fs,path,http,https,url \
     n8nio/n8n:latest
+unset ENC_KEY
 tailscale funnel --bg 5678 2>/dev/null || sudo tailscale funnel --bg 5678 2>/dev/null || true
 sleep 8 && docker logs n8n --tail 3
 echo ""
