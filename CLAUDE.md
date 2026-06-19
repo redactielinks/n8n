@@ -61,9 +61,17 @@ staat zonder dat bevestigd te zien.
 - Voor surgical (niet-full-replace) patches: `js.count(oude_string)` exact
   controleren vóór een `replace`, anders afbreken.
 - Elke `docker run` die n8n herstart **moet** `N8N_ENCRYPTION_KEY` expliciet
-  meegeven (dynamisch gelezen uit `~/.n8n/config`). Zonder dat genereert n8n
-  soms een nieuwe sleutel, waardoor alle bestaande credentials onleesbaar
-  worden (gebeurd op 17 juni 2026, fix in `fix-openrouter-credential.sh`).
+  meegeven (dynamisch gelezen uit `~/.n8n/config`) ÉN de kennisbank-map
+  mounten (`-v "${KENNISBANK_DIR}:${KENNISBANK_DIR}"`, dezelfde absolute
+  host-pad binnen de container omdat de jsCode dat pad direct gebruikt).
+  Zonder de encryptiesleutel genereert n8n soms een nieuwe sleutel, waardoor
+  alle bestaande credentials onleesbaar worden ("Credentials could not be
+  decrypted... different encryptionKey") — gebeurd op 17 juni 2026 (fix:
+  `fix-openrouter-credential.sh`) én opnieuw rond 19 juni 2026 doordat
+  `patch-rubrieken-en-llm-titels.sh` (gedraaid vóór deze regel als
+  standaardconventie was vastgelegd) de sleutel niet meegaf. Check dus bij
+  élke nieuwe `docker run`-regel in een patchscript: staat `N8N_ENCRYPTION_KEY`
+  er expliciet in?
 - Vóór opleveren altijd valideren: `bash -n`, ingesloten Python-heredocs
   los `ast.parse()`'n, ingesloten JS los door `node --check` (in een async
   IIFE), en idealiter een dry-run met gefabriceerde fixture-JSON die zowel
