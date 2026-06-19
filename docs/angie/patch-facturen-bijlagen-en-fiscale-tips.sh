@@ -198,6 +198,23 @@ function cleanPreview(s) {
   return String(s).replace(/\s+/g, ' ').trim();
 }
 
+// OpenRouter (gedeelde/gratis modellen) geeft onder belasting soms een
+// tijdelijke 429/5xx terug -- vooral bij meerdere documenten kort na elkaar
+// (titel + classificatie + analyse per document). Eén keer opnieuw proberen
+// na een korte pauze voorkomt dat zo'n kortstondige hapering een hele
+// analyse laat mislukken.
+async function metRetry(fn, pogingen = 2, wachtMs = 2000) {
+  let laatsteFout;
+  for (let i = 0; i < pogingen; i++) {
+    try { return await fn(); }
+    catch (e) {
+      laatsteFout = e;
+      if (i < pogingen - 1) await new Promise(r => setTimeout(r, wachtMs));
+    }
+  }
+  throw laatsteFout;
+}
+
 // De eerste tekstregel van een document (aanhef van een brief, kopregel van
 // een bon) beschrijft zelden waar het document over gaat -- vandaar een
 // echte LLM-samenvatting in plaats van kaal afkappen. Kort en met een eigen
@@ -205,7 +222,7 @@ function cleanPreview(s) {
 async function genereerKorteTitel(content) {
   const fallback = cleanPreview(content).substring(0, 60);
   try {
-    const llmData = await httpRequest({
+    const llmData = await metRetry(() => httpRequest({
       method: 'POST', url: LLM_URL,
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + LLM_API_KEY },
       body: {
@@ -217,7 +234,7 @@ async function genereerKorteTitel(content) {
         stream: false, temperature: 0.2,
       },
       json: true, timeout: 20000,
-    });
+    }));
     const titel = (llmData?.choices?.[0]?.message?.content || '').replace(/^["'`]+|["'`]+$/g, '').trim();
     return titel ? cleanPreview(titel).substring(0, 70) : fallback;
   } catch (e) {
@@ -266,10 +283,10 @@ async function verwerkFinancieelDocument(content) {
     leverancier: '', factuurdatum: '', factuurnummer: '',
     bedrag_excl_btw: '', btw_percentage: '', btw_bedrag: '', bedrag_incl_btw: '',
     categorie_fiscaal: '', aftrekbaar: 'onbekend', titel_kort: '',
-    tip: 'Kon niet automatisch geanalyseerd worden (LLM niet bereikbaar of timeout) -- controleer zelf het bedrag en de btw.',
+    tip: 'Geen tip gegenereerd -- controleer zelf het bedrag en de btw.',
   };
   try {
-    const llmData = await httpRequest({
+    const llmData = await metRetry(() => httpRequest({
       method: 'POST', url: LLM_URL,
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + LLM_API_KEY },
       body: {
@@ -281,17 +298,23 @@ async function verwerkFinancieelDocument(content) {
           // voorheen alleen het kale rubrieklabel of een afgekapte ruwe
           // tekstregel -- geen van beide beschrijft waar het document
           // werkelijk over gaat.
-          content: 'Je bent een Nederlandse boekhoudkundig en fiscaal assistent voor een zelfstandig ondernemer/particulier. Je krijgt de tekst van een factuur, bon, ticket of ander document. Antwoord uitsluitend als JSON (geen markdown). Velden: {"titel_kort":"korte titel van max 8 woorden die samenvat waar dit document over gaat, bv. \'Vliegticket KLM Amsterdam-Londen\' of \'Garantiebewijs wasmachine Bosch\', in het Nederlands","leverancier":"naam leverancier/winkel/maatschappij, of leeg","factuurdatum":"YYYY-MM-DD indien herkenbaar, anders de datum zoals vermeld, of leeg","factuurnummer":"factuur-, bon- of ticketnummer, of leeg","bedrag_excl_btw":"bedrag exclusief btw als getal met punt, of leeg","btw_percentage":"21|9|0|onbekend","btw_bedrag":"btw-bedrag als getal met punt, of leeg","bedrag_incl_btw":"totaalbedrag inclusief btw als getal met punt, of leeg","categorie_fiscaal":"korte kostencategorie, bv. Kantoorkosten, Reiskosten, Representatiekosten, ICT, Vakliteratuur, Verzekering, Aankoop, Overig","aftrekbaar":"ja|nee|deels|onbekend, vanuit het perspectief van een zelfstandig ondernemer met gemengd zakelijk/prive gebruik","tip":"1-2 zinnen praktisch en proactief advies specifiek voor dit document (bv. btw-aftrek, zakelijk vs prive gebruik, garantietermijn, bewaartermijn) -- geen algemeen fiscaal advies herhalen, dat staat al vast in de pagina"}'
+          // Deze persoon heeft GEEN eigen bedrijf/onderneming -- het
+          // fiscale advies mag dus nooit uitgaan van zakelijke kostenaftrek
+          // (dat leverde eerder ten onrechte "vermoedelijk zakelijk
+          // aftrekbaar" op voor een gewone particuliere verzekeringspolis).
+          content: 'Je bent een Nederlandse administratief en fiscaal assistent voor een PARTICULIER ZONDER eigen bedrijf of onderneming -- geen zzp\'er, geen btw-aangifte, geen ondernemersaftrek. Je krijgt de tekst van een factuur, bon, ticket of ander document. Antwoord uitsluitend als JSON (geen markdown). Velden: {"titel_kort":"korte titel van max 8 woorden die samenvat waar dit document over gaat, bv. \'Vliegticket KLM Amsterdam-Londen\' of \'Garantiebewijs wasmachine Bosch\', in het Nederlands","leverancier":"naam leverancier/winkel/maatschappij, of leeg","factuurdatum":"YYYY-MM-DD indien herkenbaar, anders de datum zoals vermeld, of leeg","factuurnummer":"factuur-, bon- of ticketnummer, of leeg","bedrag_excl_btw":"bedrag exclusief btw als getal met punt, of leeg","btw_percentage":"21|9|0|onbekend","btw_bedrag":"btw-bedrag als getal met punt, of leeg","bedrag_incl_btw":"totaalbedrag inclusief btw als getal met punt, of leeg","categorie_fiscaal":"korte categorie voor de persoonlijke administratie, bv. Zorg, Wonen, Vervoer, Verzekering, Aankoop, Abonnement, Overig -- GEEN zakelijke/ondernemerscategorieen zoals Kantoorkosten of Representatiekosten, deze persoon heeft geen bedrijf","aftrekbaar":"ja|nee|deels|onbekend -- vanuit het Nederlandse inkomstenbelasting-perspectief van een PARTICULIER zonder bedrijf: bijna altijd \'nee\', want gewone uitgaven/verzekeringen/aankopen zijn voor particulieren niet aftrekbaar; gebruik \'ja\'/\'deels\' alleen bij een van de specifieke wettelijke persoonlijke aftrekposten (giften aan een ANBI, hypotheekrente eigen woning, specifieke zorgkosten boven de drempel die niet vergoed worden, e.d.) -- stel nooit zakelijke kostenaftrek voor, want deze persoon heeft geen onderneming","tip":"1-2 zinnen praktisch en proactief advies specifiek voor dit document vanuit het perspectief van een particulier zonder bedrijf (bv. bewaartermijn, garantietermijn, een eventuele persoonlijke aftrekpost zoals een gift of zorgkosten) -- stel nooit een zakelijke/btw-aftrek voor, en herhaal geen algemeen advies dat al vaststaat in de pagina"}'
         }, { role: 'user', content }],
         stream: false, temperature: 0.2,
       },
       json: true, timeout: 60000,
-    });
+    }));
     const raw = llmData?.choices?.[0]?.message?.content || '{}';
     const parsed = JSON.parse(raw.replace(/```json\n?|\n?```/g, '').trim());
     return Object.assign({}, defaults, parsed);
   } catch (e) {
-    return defaults;
+    return Object.assign({}, defaults, {
+      tip: 'Kon niet automatisch geanalyseerd worden (' + String(e && e.message || e).slice(0, 150) + ') -- controleer zelf het bedrag en de btw.',
+    });
   }
 }
 
