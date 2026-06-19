@@ -240,7 +240,13 @@ async function slaFinancieelDocumentOp(rubriek, label, content, bijlagePad) {
   if (bijlageLink) fmLines.push('bijlage: ' + bijlageLink);
   fmLines.push('datum: ' + timestamp, 'bron: ' + source, '---');
 
-  const titel = label + (analyse.leverancier ? ': ' + analyse.leverancier : '');
+  // Zonder leverancier moet de kop toch beschrijven waar de pagina over
+  // gaat -- anders is de titel alleen het rubrieklabel (bv. "Administratie"),
+  // en laat "Recent toegevoegd" op de wiki-homepage dan voor elk document
+  // dezelfde naam zien zonder enig idee wat erin staat.
+  const titel = analyse.leverancier
+    ? label + ': ' + analyse.leverancier
+    : label + ': ' + cleanPreview(content).substring(0, 50);
   const samenvattingRegels = [
     analyse.leverancier ? '- Leverancier: ' + analyse.leverancier : '',
     analyse.factuurdatum ? '- Datum: ' + analyse.factuurdatum : '',
@@ -270,9 +276,9 @@ async function slaFinancieelDocumentOp(rubriek, label, content, bijlagePad) {
   const filename = fileTs + '-' + rubriek + '.md';
   fs.writeFileSync(path.join(dir, filename), fmLines.join('\n') + '\n\n' + bodyDelen.join('\n') + '\n', 'utf8');
 
-  const previewLabel = analyse.leverancier
-    ? label + ': ' + analyse.leverancier + (analyse.bedrag_incl_btw ? ' (' + analyse.bedrag_incl_btw + ')' : '')
-    : label + ': ' + cleanPreview(content).substring(0, 50);
+  const previewLabel = analyse.leverancier && analyse.bedrag_incl_btw
+    ? titel + ' (' + analyse.bedrag_incl_btw + ')'
+    : titel;
   linkInCategorie('persoonlijk.md', 'Persoonlijk', previewLabel, 'persoonlijk/' + rubriek + '/' + filename);
 
   let reply = label + ' opgeslagen';
@@ -367,16 +373,22 @@ if (cmd === 'notitie' || cmd === 'notities' || cmd === 'note') {
   const dir = path.join(KENNISBANK_WIKI, 'persoonlijk', 'notities');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const filename = fileTs + '-notitie.md';
+  const cleanContent = cleanPreview(content);
+  const preview = cleanContent.length > 60 ? cleanContent.substring(0, 60) + '...' : cleanContent;
   // Vangnet: als een geuploade bijlage (PDF) hier toch belandt omdat de
   // classificatie het niet als factuur/document herkende, gaat het
   // origineel niet stilletjes verloren -- het wordt alsnog gelinkt.
   const bijlageLink = linkBijlage(dir, bijlage);
-  const lines = ['---', 'tags:', '  - notitie', '  - ' + source, 'datum: ' + timestamp, 'bron: ' + source];
-  if (bijlageLink) lines.push('bijlage: ' + bijlageLink);
-  lines.push('---', '', (bijlageLink ? '[Bekijk origineel](' + bijlageLink + ')\n\n' : '') + content);
-  fs.writeFileSync(path.join(dir, filename), lines.join('\n'), 'utf8');
-  const cleanContent = cleanPreview(content);
-  const preview = cleanContent.length > 60 ? cleanContent.substring(0, 60) + '...' : cleanContent;
+  const fmLines = ['---', 'tags:', '  - notitie', '  - ' + source, 'datum: ' + timestamp, 'bron: ' + source];
+  if (bijlageLink) fmLines.push('bijlage: ' + bijlageLink);
+  fmLines.push('---');
+  // Zonder eigen '# '-kop valt de wiki terug op het bestandspad als titel
+  // (zie extract_title in app.py) -- "Recent toegevoegd" liet dan alleen
+  // een tijdstempel zien in plaats van waar de notitie over ging.
+  const bodyDelen = ['# ' + (preview || 'Notitie'), ''];
+  if (bijlageLink) bodyDelen.push('[Bekijk origineel](' + bijlageLink + ')', '');
+  bodyDelen.push(content);
+  fs.writeFileSync(path.join(dir, filename), fmLines.join('\n') + '\n\n' + bodyDelen.join('\n') + '\n', 'utf8');
   linkInCategorie('persoonlijk.md', 'Persoonlijk', preview || 'Notitie', 'persoonlijk/notities/' + filename);
   replyText = 'Notitie opgeslagen: "' + preview + '"';
 

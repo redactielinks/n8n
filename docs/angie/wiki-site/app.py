@@ -347,7 +347,20 @@ def markdown_to_html(text, base_dir=""):
 
 def extract_title(text, fallback):
     m = re.search(r"^#\s+(.*)$", text, re.MULTILINE)
-    return m.group(1) if m else fallback
+    if m:
+        return m.group(1)
+    # Geen "# titel" gevonden (bv. een ouder paginatype dat per ongeluk geen
+    # kop toevoegt) -- val terug op de eerste niet-lege tekstregel in plaats
+    # van het kale bestandspad, anders toont "Recent toegevoegd" alleen een
+    # onleesbare tijdstempel zonder enig idee waar de pagina over gaat.
+    body = re.sub(r"^---\n.*?\n---\n", "", text, count=1, flags=re.DOTALL)
+    for line in body.splitlines():
+        line = line.strip()
+        if line and not line.startswith("[Bekijk origineel]"):
+            preview = strip_markdown(line)
+            if preview:
+                return preview[:60]
+    return fallback
 
 
 def strip_markdown(text):
