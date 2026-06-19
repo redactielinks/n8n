@@ -334,7 +334,10 @@ const lijktOpRecept = /ingredi[eë]nten/i.test(text) && /bereidings?wijze|bereid
 // op 'notitie' onder Persoonlijk in plaats van Administratie: de LLM-
 // classificatie hieronder kan bij lange, geextraheerde PDF-tekst timeouten
 // (zelfde probleem als eerder bij recepten), en valt dan terug op 'notitie'.
-const lijktOpFactuur = /\bfactuur\b|\binvoice\b|\bbon(nummer)?\b/i.test(text)
+// Let op: "factuur" zonder \b erna, want "factuurnummer" heeft geen
+// woordgrens tussen "factuur" en "nummer" -- \bfactuur\b miste daardoor
+// juist de meest voorkomende factuurtekst.
+const lijktOpFactuur = /factuur|invoice|\bbon(nummer)?\b|\bnota\b|kwitantie|kassabon/i.test(text)
   && /btw|vat|totaalbedrag|total amount|factuurnummer|invoice number|te betalen|bedrag/i.test(text);
 const VRIJE_TEKST_INTENTS = ['notitie', 'dagboek', 'idee', 'taak', 'wiki', 'onderzoek', 'braindump', 'recept', 'administratie', 'declaratie', 'tickets', 'kopen', 'garantie', 'verzekeringen'];
 if (!cmdMatchRaw && text && lijktOpRecept) {

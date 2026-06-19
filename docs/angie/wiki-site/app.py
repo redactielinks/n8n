@@ -799,7 +799,11 @@ class Handler(BaseHTTPRequestHandler):
                 # exact het origineel, dus daar is geen losse bijlage nodig.
                 is_pdf = raw_bytes[:5] == b"%PDF-"
                 bijlage = save_attachment(raw_bytes, filename) if is_pdf else None
-                message = f"Bestand ontvangen ({filename}):\n\n{text[:4000]}"
+                # Geen "Bestand ontvangen (filename):"-voorvoegsel meer: dat kwam
+                # als eerste regel in de opgeslagen pagina terecht en werd dus de
+                # titel/preview ("Bestand ontvangen (...): ...") in plaats van de
+                # werkelijke inhoud. De bestandsnaam staat al in de bijlage-link.
+                message = text[:4000]
                 reply = call_n8n_cli(message, bijlage=bijlage)
                 self._send_json({"reply": reply})
             except (urllib.error.URLError, OSError, TimeoutError) as e:
