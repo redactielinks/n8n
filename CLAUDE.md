@@ -112,6 +112,24 @@ staat zonder dat bevestigd te zien.
   plaats van de oude vage "LLM niet bereikbaar of timeout" — belangrijk
   omdat ik geen Pi-/dockerlogtoegang heb en anders blind moet gokken naar
   de oorzaak.
+- `verwerkFinancieelDocument` haalt sinds `patch-factuurperiode.sh` ook een
+  `factuurperiode` uit herhalende/periodieke facturen (abonnement,
+  verzekeringspremie, energie, huur e.d.) — zichtbaar in de frontmatter, de
+  "Samenvatting"-sectie op de wiki-pagina én het directe antwoord ("...
+  Periode: januari 2026."). Voor eenmalige documenten blijft dit veld leeg.
+- **Pas op met de volgorde van openstaande scripts op de Pi.** Stand 19 juni
+  2026, avond: de live installatie zat vast op een encryptiesleutel-fout
+  (zie hierboven), waardoor zowel `patch-llm-calls-naar-openrouter.sh` als
+  `patch-fiscaal-particulier-en-llm-retry.sh` nog niet bevestigd succesvol
+  zijn gedraaid. `patch-factuurperiode.sh` bouwt surgical verder op de
+  staat ná `patch-fiscaal-particulier-en-llm-retry.sh` (precondition-check
+  op de "PARTICULIER ZONDER eigen bedrijf"-tekst). Juiste volgorde op een
+  vastgelopen Pi: `fix-openrouter-credential.sh` → `patch-llm-calls-naar-openrouter.sh`
+  → `patch-fiscaal-particulier-en-llm-retry.sh` → `patch-factuurperiode.sh`.
+  Bij een verse/nieuwe installatie volstaat het master-script
+  `patch-facturen-bijlagen-en-fiscale-tips.sh` (heeft factuurperiode al
+  ingebouwd) gevolgd door `patch-llm-calls-naar-openrouter.sh` met evt.
+  modelargument.
 - Openstaande/bekende issues: zie `docs/angie/TODO.md`.
 - Bekende, nog niet opgeloste bevinding: het Telegram-bottoken staat in
   plaintext gecommit in `patch-facturen-bijlagen-en-fiscale-tips.sh`. Laag

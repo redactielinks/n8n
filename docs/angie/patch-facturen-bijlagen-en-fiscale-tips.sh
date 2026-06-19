@@ -64,7 +64,7 @@
 # ============================================================
 set -euo pipefail
 
-SCRIPT_VERSIE="2026-06-19-facturen-bijlagen-fiscale-tips-1"
+SCRIPT_VERSIE="2026-06-19-facturen-bijlagen-fiscale-tips-2"
 echo "==> Scriptversie: ${SCRIPT_VERSIE} (regel-aantal: $(wc -l < "${BASH_SOURCE[0]}"))"
 
 WF_ID="YdNGeswnhhzFdTFy"
@@ -280,7 +280,7 @@ const SIMPELE_RUBRIEKEN = {
 
 async function verwerkFinancieelDocument(content) {
   const defaults = {
-    leverancier: '', factuurdatum: '', factuurnummer: '',
+    leverancier: '', factuurdatum: '', factuurnummer: '', factuurperiode: '',
     bedrag_excl_btw: '', btw_percentage: '', btw_bedrag: '', bedrag_incl_btw: '',
     categorie_fiscaal: '', aftrekbaar: 'onbekend', titel_kort: '',
     tip: 'Geen tip gegenereerd -- controleer zelf het bedrag en de btw.',
@@ -302,7 +302,7 @@ async function verwerkFinancieelDocument(content) {
           // fiscale advies mag dus nooit uitgaan van zakelijke kostenaftrek
           // (dat leverde eerder ten onrechte "vermoedelijk zakelijk
           // aftrekbaar" op voor een gewone particuliere verzekeringspolis).
-          content: 'Je bent een Nederlandse administratief en fiscaal assistent voor een PARTICULIER ZONDER eigen bedrijf of onderneming -- geen zzp\'er, geen btw-aangifte, geen ondernemersaftrek. Je krijgt de tekst van een factuur, bon, ticket of ander document. Antwoord uitsluitend als JSON (geen markdown). Velden: {"titel_kort":"korte titel van max 8 woorden die samenvat waar dit document over gaat, bv. \'Vliegticket KLM Amsterdam-Londen\' of \'Garantiebewijs wasmachine Bosch\', in het Nederlands","leverancier":"naam leverancier/winkel/maatschappij, of leeg","factuurdatum":"YYYY-MM-DD indien herkenbaar, anders de datum zoals vermeld, of leeg","factuurnummer":"factuur-, bon- of ticketnummer, of leeg","bedrag_excl_btw":"bedrag exclusief btw als getal met punt, of leeg","btw_percentage":"21|9|0|onbekend","btw_bedrag":"btw-bedrag als getal met punt, of leeg","bedrag_incl_btw":"totaalbedrag inclusief btw als getal met punt, of leeg","categorie_fiscaal":"korte categorie voor de persoonlijke administratie, bv. Zorg, Wonen, Vervoer, Verzekering, Aankoop, Abonnement, Overig -- GEEN zakelijke/ondernemerscategorieen zoals Kantoorkosten of Representatiekosten, deze persoon heeft geen bedrijf","aftrekbaar":"ja|nee|deels|onbekend -- vanuit het Nederlandse inkomstenbelasting-perspectief van een PARTICULIER zonder bedrijf: bijna altijd \'nee\', want gewone uitgaven/verzekeringen/aankopen zijn voor particulieren niet aftrekbaar; gebruik \'ja\'/\'deels\' alleen bij een van de specifieke wettelijke persoonlijke aftrekposten (giften aan een ANBI, hypotheekrente eigen woning, specifieke zorgkosten boven de drempel die niet vergoed worden, e.d.) -- stel nooit zakelijke kostenaftrek voor, want deze persoon heeft geen onderneming","tip":"1-2 zinnen praktisch en proactief advies specifiek voor dit document vanuit het perspectief van een particulier zonder bedrijf (bv. bewaartermijn, garantietermijn, een eventuele persoonlijke aftrekpost zoals een gift of zorgkosten) -- stel nooit een zakelijke/btw-aftrek voor, en herhaal geen algemeen advies dat al vaststaat in de pagina"}'
+          content: 'Je bent een Nederlandse administratief en fiscaal assistent voor een PARTICULIER ZONDER eigen bedrijf of onderneming -- geen zzp\'er, geen btw-aangifte, geen ondernemersaftrek. Je krijgt de tekst van een factuur, bon, ticket of ander document. Antwoord uitsluitend als JSON (geen markdown). Velden: {"titel_kort":"korte titel van max 8 woorden die samenvat waar dit document over gaat, bv. \'Vliegticket KLM Amsterdam-Londen\' of \'Garantiebewijs wasmachine Bosch\', in het Nederlands","leverancier":"naam leverancier/winkel/maatschappij, of leeg","factuurdatum":"YYYY-MM-DD indien herkenbaar, anders de datum zoals vermeld, of leeg","factuurnummer":"factuur-, bon- of ticketnummer, of leeg","factuurperiode":"alleen invullen bij een HERHALENDE/PERIODIEKE factuur (abonnement, verzekeringspremie, energie, huur e.d.): de periode die deze factuur dekt, bv. \'januari 2026\' of \'01-01-2026 t/m 31-01-2026\' -- anders leeg","bedrag_excl_btw":"bedrag exclusief btw als getal met punt, of leeg","btw_percentage":"21|9|0|onbekend","btw_bedrag":"btw-bedrag als getal met punt, of leeg","bedrag_incl_btw":"totaalbedrag inclusief btw als getal met punt, of leeg","categorie_fiscaal":"korte categorie voor de persoonlijke administratie, bv. Zorg, Wonen, Vervoer, Verzekering, Aankoop, Abonnement, Overig -- GEEN zakelijke/ondernemerscategorieen zoals Kantoorkosten of Representatiekosten, deze persoon heeft geen bedrijf","aftrekbaar":"ja|nee|deels|onbekend -- vanuit het Nederlandse inkomstenbelasting-perspectief van een PARTICULIER zonder bedrijf: bijna altijd \'nee\', want gewone uitgaven/verzekeringen/aankopen zijn voor particulieren niet aftrekbaar; gebruik \'ja\'/\'deels\' alleen bij een van de specifieke wettelijke persoonlijke aftrekposten (giften aan een ANBI, hypotheekrente eigen woning, specifieke zorgkosten boven de drempel die niet vergoed worden, e.d.) -- stel nooit zakelijke kostenaftrek voor, want deze persoon heeft geen onderneming","tip":"1-2 zinnen praktisch en proactief advies specifiek voor dit document vanuit het perspectief van een particulier zonder bedrijf (bv. bewaartermijn, garantietermijn, een eventuele persoonlijke aftrekpost zoals een gift of zorgkosten) -- stel nooit een zakelijke/btw-aftrek voor, en herhaal geen algemeen advies dat al vaststaat in de pagina"}'
         }, { role: 'user', content }],
         stream: false, temperature: 0.2,
       },
@@ -329,6 +329,7 @@ async function slaFinancieelDocumentOp(rubriek, label, content, bijlagePad) {
   if (analyse.leverancier) fmLines.push('leverancier: ' + analyse.leverancier);
   if (analyse.factuurdatum) fmLines.push('factuurdatum: ' + analyse.factuurdatum);
   if (analyse.factuurnummer) fmLines.push('factuurnummer: ' + analyse.factuurnummer);
+  if (analyse.factuurperiode) fmLines.push('factuurperiode: ' + analyse.factuurperiode);
   if (analyse.bedrag_incl_btw) fmLines.push('bedrag_incl_btw: ' + analyse.bedrag_incl_btw);
   if (analyse.btw_percentage) fmLines.push('btw_percentage: ' + analyse.btw_percentage);
   if (analyse.aftrekbaar) fmLines.push('aftrekbaar: ' + analyse.aftrekbaar);
@@ -349,6 +350,7 @@ async function slaFinancieelDocumentOp(rubriek, label, content, bijlagePad) {
     analyse.leverancier ? '- Leverancier: ' + analyse.leverancier : '',
     analyse.factuurdatum ? '- Datum: ' + analyse.factuurdatum : '',
     analyse.factuurnummer ? '- Nummer: ' + analyse.factuurnummer : '',
+    analyse.factuurperiode ? '- Periode: ' + analyse.factuurperiode : '',
     analyse.bedrag_excl_btw ? '- Bedrag excl. btw: ' + analyse.bedrag_excl_btw : '',
     analyse.btw_percentage && analyse.btw_percentage !== 'onbekend' ? '- Btw: ' + analyse.btw_percentage + '%' + (analyse.btw_bedrag ? ' (' + analyse.btw_bedrag + ')' : '') : '',
     analyse.bedrag_incl_btw ? '- Totaal incl. btw: ' + analyse.bedrag_incl_btw : '',
@@ -383,6 +385,7 @@ async function slaFinancieelDocumentOp(rubriek, label, content, bijlagePad) {
   if (analyse.leverancier) reply += ': ' + analyse.leverancier;
   if (analyse.bedrag_incl_btw) reply += ' (' + analyse.bedrag_incl_btw + ')';
   reply += '.';
+  if (analyse.factuurperiode) reply += ' Periode: ' + analyse.factuurperiode + '.';
   if (analyse.aftrekbaar && analyse.aftrekbaar !== 'onbekend') reply += ' Vermoedelijk aftrekbaar: ' + analyse.aftrekbaar + '.';
   if (bijlageLink) reply += ' Origineel bewaard.';
   if (analyse.tip) reply += '\n\nTip: ' + analyse.tip;
