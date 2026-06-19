@@ -48,11 +48,17 @@ WHISPER_URL = os.environ.get("WHISPER_URL", "http://100.68.46.126:27125/transcri
 CHAT_HTTP_TIMEOUT = 200
 
 
-def call_n8n_cli(text):
+def call_n8n_cli(text, bijlage=None):
     """Stuurt tekst naar dezelfde commandoherkenning als Telegram/CLI en
     geeft het antwoord terug. Gooit een Exception met een leesbare reden
-    als dat niet lukt (n8n niet bereikbaar, timeout, etc.)."""
-    body = json.dumps({"text": text}).encode("utf-8")
+    als dat niet lukt (n8n niet bereikbaar, timeout, etc.). 'bijlage' is het
+    kennisbank/wiki/-relatieve pad van een gestaged origineel bestand (zie
+    save_attachment), zodat n8n het kan verplaatsen naar de juiste rubriek
+    en linken vanuit de nieuwe pagina."""
+    body_obj = {"text": text}
+    if bijlage:
+        body_obj["bijlage"] = bijlage
+    body = json.dumps(body_obj).encode("utf-8")
     req = urllib.request.Request(
         N8N_CLI_URL, data=body, method="POST",
         headers={"Content-Type": "application/json"},
@@ -113,6 +119,29 @@ def extract_upload_text(raw_bytes, filename):
             "PDF's met een tekstlaag kunnen verwerkt worden — foto's nog niet, daarvoor is "
             "geen vision-model gekoppeld."
         )
+
+
+def save_attachment(raw_bytes, filename):
+    """Bewaart het originele geuploade bestand (bv. een PDF-factuur) in een
+    staging-map in de kennisbank. Tekst-extractie (extract_upload_text)
+    verliest opmaak/lay-out, en voor facturen/tickets/garantiebewijzen moet
+    je later het origineel kunnen tonen aan de belastingdienst of een
+    winkel — dus dat origineel moet ergens blijven staan, niet alleen de
+    geextraheerde tekst. n8n verplaatst dit bestand vervolgens (zie de
+    'bijlage'-afhandeling in de workflow) naar de map van de uiteindelijke
+    rubriek en linkt het vanuit de nieuwe pagina. Geeft het kennisbank/wiki/
+    -relatieve pad terug, of None als opslaan niet lukte (dan gaat het
+    verzoek door zonder bijlage, in plaats van helemaal te mislukken)."""
+    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", filename) or "bestand"
+    staged_name = time.strftime("%Y%m%d%H%M%S") + "-" + safe_name
+    staging_dir = os.path.join(KENNISBANK_DIR, "wiki", "_bijlagen")
+    try:
+        os.makedirs(staging_dir, exist_ok=True)
+        with open(os.path.join(staging_dir, staged_name), "wb") as f:
+            f.write(raw_bytes)
+        return "_bijlagen/" + staged_name
+    except OSError:
+        return None
 
 
 _cache_lock = threading.Lock()
@@ -751,8 +780,14 @@ class Handler(BaseHTTPRequestHandler):
                 except UploadDecodeError as e:
                     self._send_json({"error": html.escape(str(e))}, status=415)
                     return
+                # Alleen een PDF heeft een origineel dat de moeite waard is om te
+                # bewaren -- tekstextractie daarvan is lossy (opmaak/lay-out
+                # gaat verloren). Bij .txt/.md is de geextraheerde tekst al
+                # exact het origineel, dus daar is geen losse bijlage nodig.
+                is_pdf = raw_bytes[:5] == b"%PDF-"
+                bijlage = save_attachment(raw_bytes, filename) if is_pdf else None
                 message = f"Bestand ontvangen ({filename}):\n\n{text[:4000]}"
-                reply = call_n8n_cli(message)
+                reply = call_n8n_cli(message, bijlage=bijlage)
                 self._send_json({"reply": reply})
             except (urllib.error.URLError, OSError, TimeoutError) as e:
                 self._send_json({"error": f"Angie is nu niet bereikbaar ({e})."}, status=502)

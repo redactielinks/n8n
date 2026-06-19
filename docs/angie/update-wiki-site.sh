@@ -29,6 +29,7 @@ PORT=8090
 echo "==> Nieuwe app.py downloaden (cache-busting, altijd de laatste versie)..."
 curl -fsSL -o "${APP_DIR}/app.py" "${APP_URL}?t=$(date +%s)"
 grep -q "CHAT_HTTP_TIMEOUT = 200" "${APP_DIR}/app.py" && echo "    OK: nieuwe timeout-fix aanwezig (200s)" || echo "    WAARSCHUWING: verwachte timeout-fix niet gevonden in gedownloade app.py"
+grep -q "save_attachment" "${APP_DIR}/app.py" && echo "    OK: bijlage-behoud (origineel PDF bewaren) aanwezig" || echo "    WAARSCHUWING: bijlage-behoud niet gevonden in gedownloade app.py"
 echo "    Opgeslagen in ${APP_DIR}/app.py"
 
 echo ""
