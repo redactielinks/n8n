@@ -9,19 +9,26 @@
 # (--ro) omdat de site alleen las; voor de verwijderfunctie moet de
 # container nu ook mogen schrijven, dus de mount wordt hier read-write.
 #
-# Voer dit uit OP de Raspberry Pi:
-#   curl -fsSL -o update-wiki-site.sh https://raw.githubusercontent.com/redactielinks/n8n/claude/angie-https-tunnel-foss-hfqqzl/docs/angie/update-wiki-site.sh
+# Voer dit uit OP de Raspberry Pi. Verwijder eerst een eventuele oude
+# lokale kopie en download daarna vers (anders kun je per ongeluk een
+# verlopen gecachete versie van GitHub uitvoeren zonder dat je het ziet):
+#   rm -f update-wiki-site.sh
+#   curl -fsSL -o update-wiki-site.sh "https://raw.githubusercontent.com/redactielinks/n8n/claude/angie-https-tunnel-foss-hfqqzl/docs/angie/update-wiki-site.sh?t=$(date +%s)"
 #   bash update-wiki-site.sh
 # ============================================================
 set -euo pipefail
+
+SCRIPT_VERSIE="2026-06-19-update-wiki-site-cache-bust-1"
+echo "==> Scriptversie: ${SCRIPT_VERSIE} (regel-aantal: $(wc -l < "${BASH_SOURCE[0]}"))"
 
 APP_DIR="/home/redactielinks/wiki-site"
 KENNISBANK_DIR="/home/redactielinks/kennisbank"
 APP_URL="https://raw.githubusercontent.com/redactielinks/n8n/claude/angie-https-tunnel-foss-hfqqzl/docs/angie/wiki-site/app.py"
 PORT=8090
 
-echo "==> Nieuwe app.py downloaden..."
-curl -fsSL -o "${APP_DIR}/app.py" "$APP_URL"
+echo "==> Nieuwe app.py downloaden (cache-busting, altijd de laatste versie)..."
+curl -fsSL -o "${APP_DIR}/app.py" "${APP_URL}?t=$(date +%s)"
+grep -q "CHAT_HTTP_TIMEOUT = 200" "${APP_DIR}/app.py" && echo "    OK: nieuwe timeout-fix aanwezig (200s)" || echo "    WAARSCHUWING: verwachte timeout-fix niet gevonden in gedownloade app.py"
 echo "    Opgeslagen in ${APP_DIR}/app.py"
 
 echo ""
