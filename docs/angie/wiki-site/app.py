@@ -37,7 +37,11 @@ RECENT_COUNT = 8
 # deze website aangeroepen (zie docs/angie/patch-cli-bypass.sh).
 N8N_CLI_URL = os.environ.get("N8N_CLI_URL", "http://100.77.5.104:5678/webhook/angie-cli")
 WHISPER_URL = os.environ.get("WHISPER_URL", "http://100.68.46.126:27125/transcribe")
-CHAT_HTTP_TIMEOUT = 30
+# Het herschrijven van een recept (Reflux-Filter-Protocol) kan op het lokale
+# model tot ~150 seconden duren, /onderzoek tot ~135 seconden — een korte
+# timeout hier laat de chat dan onterecht "timed out" melden terwijl n8n
+# nog gewoon doorwerkt.
+CHAT_HTTP_TIMEOUT = 200
 
 
 def call_n8n_cli(text):
@@ -476,7 +480,7 @@ CHAT_HTML = """
   function sendText(text) {
     if (!text) return;
     addBubble('user', text);
-    status.textContent = 'Bezig...';
+    status.textContent = 'Bezig... (kan bij recepten of onderzoek een paar minuten duren)';
     postJson('/api/chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -501,7 +505,7 @@ CHAT_HTML = """
     var file = fileInput.files[0];
     if (!file) return;
     addBubble('user', 'Bestand: ' + file.name);
-    status.textContent = 'Bezig...';
+    status.textContent = 'Bezig... (kan bij recepten of onderzoek een paar minuten duren)';
     postJson('/api/chat/upload', {
       method: 'POST',
       headers: {'X-Filename': file.name},
