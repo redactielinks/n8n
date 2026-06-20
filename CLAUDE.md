@@ -137,6 +137,35 @@ staat zonder dat bevestigd te zien.
   gerouleerd/verwijderd — overleg met gebruiker voor actie (roteren via
   @BotFather, of de hele Telegram-integratie opruimen).
 
+## Hermes Agent (Mac Mini) — sinds 20 juni 2026
+
+- Naast Project Angie (Pi) draait sinds 20 juni 2026 ook **Hermes Agent**
+  (NousResearch, https://github.com/NousResearch/hermes-agent) op de Mac
+  Mini — een zelfstandige CLI-agent, los geïnstalleerd door de gebruiker.
+  Bewuste keuzes (door de gebruiker bevestigd): model **OpenRouter /
+  nousresearch/hermes-4-70b** (dezelfde OpenRouter-credential als Angie),
+  het bestaande (nog niet-geroteerde) Telegram-bottoken hergebruikt voor de
+  Hermes-gateway, en koppeling met Angie via MCP.
+- `docs/angie/hermes-agent/angie_mcp_bridge.py`: een stdio-MCP-server
+  (Python, `mcp`-package, `FastMCP`) die op de Mac Mini naast Hermes Agent
+  draait en tool-aanroepen doorzet naar de bestaande n8n-webhook
+  (`/webhook/angie-cli`) — zo kan Hermes Agent de Angie-wiki/kennisbank
+  gebruiken zonder dat n8n zelf een MCP-server moet worden. Verwacht één
+  env var: `ANGIE_WEBHOOK_URL` (de volledige webhook-URL). Gevalideerd met
+  een gemockte webhook (succespad + onbereikbaar-pad).
+- **Belangrijke beperking:** ik (Claude) heb, net als bij de Pi, geen
+  directe terminal-/SSH-toegang tot de Mac Mini. De officiële
+  configuratiedocs (`hermes-agent.nousresearch.com/docs/...`) blokkeren
+  geautomatiseerd ophalen (HTTP 403) — alleen de bronbestanden in de
+  GitHub-repo zelf (`.env.example`, `cli-config.yaml.example`) waren
+  bruikbaar. Daaruit bevestigd: env-vars `OPENROUTER_API_KEY`,
+  `TELEGRAM_BOT_TOKEN` (plus `TELEGRAM_ALLOWED_USERS` e.d.), en een
+  `mcp_servers:`-blok in `cli-config.yaml` met per server `command`+`args`
+  (stdio, zoals onze bridge) of `url` (remote/SSE). De **exacte**
+  installatielocatie van die config (repo-clone-pad vs. `~/.hermes/...`)
+  staat niet vast vanuit de documentatie — dit moet bevestigd worden via
+  een korte discovery op de Mac Mini zelf voor verdere stappen.
+
 ## Geleerde les (meta)
 
 Samenvattingen van lange gesprekken kunnen feiten laten "verschuiven" (bv.
