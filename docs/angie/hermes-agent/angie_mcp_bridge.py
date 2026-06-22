@@ -54,7 +54,7 @@ def angie_command(text: str) -> str:
         return f"Kon de Angie-webhook niet bereiken ({e}). Draait n8n, en is de Tailscale-funnel actief?"
     except json.JSONDecodeError:
         return "Onverwacht antwoord (geen geldige JSON) van de Angie-webhook."
-    return data.get("replyText") or json.dumps(data, ensure_ascii=False)
+    return data.get("reply") or json.dumps(data, ensure_ascii=False)
 
 
 if __name__ == "__main__":
