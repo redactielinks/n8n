@@ -182,17 +182,33 @@ staat zonder dat bevestigd te zien.
 - Naast Project Angie (Pi) draait sinds 20 juni 2026 ook **Hermes Agent**
   (NousResearch, https://github.com/NousResearch/hermes-agent) op de Mac
   Mini — een zelfstandige CLI-agent, los geïnstalleerd door de gebruiker.
-  Bewuste keuzes (door de gebruiker bevestigd): model **OpenRouter /
-  nousresearch/hermes-4-70b** (dezelfde OpenRouter-credential als Angie),
-  het bestaande (nog niet-geroteerde) Telegram-bottoken hergebruikt voor de
-  Hermes-gateway, en koppeling met Angie via MCP.
+  Bewuste keuzes (door de gebruiker bevestigd): het bestaande (nog
+  niet-geroteerde) Telegram-bottoken hergebruikt voor de Hermes-gateway,
+  en koppeling met Angie via MCP.
+- **Model: OpenRouter / `mistralai/mistral-large-2512`** (niet Hermes-4-70b
+  — bevestigd onbruikbaar, zie hieronder). 22 juni 2026 eerst geprobeerd
+  met `nousresearch/hermes-4-70b` (zelfde OpenRouter-credential als Angie),
+  maar Hermes Agent zelf geeft bij het opstarten een harde waarschuwing:
+  "Nous Research Hermes 3 & 4 models are NOT agentic and are not designed
+  for use with Hermes Agent. They lack tool-calling capabilities required
+  for agent workflows." Dit bevestigt de eerdere bevinding bij Angie's
+  hoofd-AI Agent (17 juni 2026, zie `TODO.md` "Afgerond") in een tweede,
+  onafhankelijke context — ondanks dat OpenRouter's eigen modelpagina
+  "function calling" als capability vermeldt. Overgezet naar
+  `mistralai/mistral-large-2512` via `/model mistralai/mistral-large-2512`
+  in de Hermes-chat (of `hermes model`); bevestigd functioneel getest:
+  Hermes Agent roept de `angie-wiki`-MCP-tool succesvol aan en geeft het
+  antwoord van de Angie-webhook correct terug.
 - `docs/angie/hermes-agent/angie_mcp_bridge.py`: een stdio-MCP-server
   (Python, `mcp`-package, `FastMCP`) die op de Mac Mini naast Hermes Agent
   draait en tool-aanroepen doorzet naar de bestaande n8n-webhook
   (`/webhook/angie-cli`) — zo kan Hermes Agent de Angie-wiki/kennisbank
   gebruiken zonder dat n8n zelf een MCP-server moet worden. Verwacht één
-  env var: `ANGIE_WEBHOOK_URL` (de volledige webhook-URL). Gevalideerd met
-  een gemockte webhook (succespad + onbereikbaar-pad).
+  env var: `ANGIE_WEBHOOK_URL` (de volledige webhook-URL). Eerst gevalideerd
+  met een gemockte webhook (succespad + onbereikbaar-pad), en op 22 juni
+  2026 bevestigd end-to-end werkend op de Mac Mini tegen de echte Pi-webhook
+  (`hermes mcp test angie-wiki` + een echte tool-aanroep vanuit een
+  Hermes-chatsessie).
 - **Belangrijke beperking:** ik (Claude) heb, net als bij de Pi, geen
   directe terminal-/SSH-toegang tot de Mac Mini. De officiële
   configuratiedocs (`hermes-agent.nousresearch.com/docs/...`) blokkeren
