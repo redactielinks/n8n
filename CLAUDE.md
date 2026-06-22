@@ -198,19 +198,26 @@ staat zonder dat bevestigd te zien.
   configuratiedocs (`hermes-agent.nousresearch.com/docs/...`) blokkeren
   geautomatiseerd ophalen (HTTP 403) — alleen de bronbestanden in de
   GitHub-repo zelf (`.env.example`, `cli-config.yaml.example`) waren
-  bruikbaar. Daaruit bevestigd: env-vars `OPENROUTER_API_KEY`,
-  `TELEGRAM_BOT_TOKEN` (plus `TELEGRAM_ALLOWED_USERS` e.d.), en een
-  `mcp_servers:`-blok met per server `command`+`args` (stdio, zoals onze
-  bridge) of `url` (remote/SSE).
+  bruikbaar.
 - **Bevestigd via discovery op de Mac Mini (22 juni 2026):** het echte,
   actief ingelezen configuratiebestand is **`~/.hermes/config.yaml`**
   (overrideable via `HERMES_HOME`) — niet `cli-config.yaml`. Dat laatste
   bestaat alleen als voorbeeldbestand (`cli-config.yaml.example`) in de
   meegeklonede repo onder `~/.hermes/hermes-agent/`. `.env` staat ook in
-  `~/.hermes/.env`. `~/.hermes/config.yaml` was na `hermes setup` al
-  ~16KB, dus bevat al een `model:`-sectie — vóór het toevoegen van het
-  `mcp_servers:`-blok met `angie-wiki` altijd eerst de bestaande inhoud
-  inspecteren in plaats van het bestand te overschrijven.
+  `~/.hermes/.env`. De structuur van `config.yaml` wijkt af van het
+  voorbeeldbestand: geen top-level `mcp_servers:`-blok, maar een eigen
+  generatorformaat. **MCP-servers dus nooit handmatig in de YAML
+  schrijven** — gebruik `hermes mcp add <naam> --command ... --env
+  KEY=VALUE --args <pad>` (let op: `--args` moet de laatste optie zijn,
+  hij consumeert de rest van de regel). Bevestigd werkend op 22 juni 2026:
+  ```
+  hermes mcp add angie-wiki \
+    --command /opt/homebrew/bin/python3.11 \
+    --env ANGIE_WEBHOOK_URL=https://raspberrypi.tailf98f98.ts.net/webhook/angie-cli \
+    --args /Users/gertbrouwer/hermes-mcp/angie_mcp_bridge.py
+  ```
+  → `hermes mcp test angie-wiki` en `hermes mcp list` bevestigen
+  verbinding + 1 tool (`angie_command`) ingeschakeld.
 - Tailscale-naam van de Pi (voor `ANGIE_WEBHOOK_URL`), opgezocht via
   `tailscale status --json` op de Mac Mini: `raspberrypi.tailf98f98.ts.net`
   (geen secret, vrij te documenteren). Webhook bevestigd bereikbaar en
