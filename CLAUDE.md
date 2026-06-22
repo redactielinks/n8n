@@ -200,11 +200,25 @@ staat zonder dat bevestigd te zien.
   GitHub-repo zelf (`.env.example`, `cli-config.yaml.example`) waren
   bruikbaar. Daaruit bevestigd: env-vars `OPENROUTER_API_KEY`,
   `TELEGRAM_BOT_TOKEN` (plus `TELEGRAM_ALLOWED_USERS` e.d.), en een
-  `mcp_servers:`-blok in `cli-config.yaml` met per server `command`+`args`
-  (stdio, zoals onze bridge) of `url` (remote/SSE). De **exacte**
-  installatielocatie van die config (repo-clone-pad vs. `~/.hermes/...`)
-  staat niet vast vanuit de documentatie — dit moet bevestigd worden via
-  een korte discovery op de Mac Mini zelf voor verdere stappen.
+  `mcp_servers:`-blok met per server `command`+`args` (stdio, zoals onze
+  bridge) of `url` (remote/SSE).
+- **Bevestigd via discovery op de Mac Mini (22 juni 2026):** het echte,
+  actief ingelezen configuratiebestand is **`~/.hermes/config.yaml`**
+  (overrideable via `HERMES_HOME`) — niet `cli-config.yaml`. Dat laatste
+  bestaat alleen als voorbeeldbestand (`cli-config.yaml.example`) in de
+  meegeklonede repo onder `~/.hermes/hermes-agent/`. `.env` staat ook in
+  `~/.hermes/.env`. `~/.hermes/config.yaml` was na `hermes setup` al
+  ~16KB, dus bevat al een `model:`-sectie — vóór het toevoegen van het
+  `mcp_servers:`-blok met `angie-wiki` altijd eerst de bestaande inhoud
+  inspecteren in plaats van het bestand te overschrijven.
+- Tailscale-naam van de Pi (voor `ANGIE_WEBHOOK_URL`), opgezocht via
+  `tailscale status --json` op de Mac Mini: `raspberrypi.tailf98f98.ts.net`
+  (geen secret, vrij te documenteren). Webhook bevestigd bereikbaar en
+  werkend via curl (`{"reply":"Geen openstaande taken gevonden."}`).
+  Belangrijk: de buitenste JSON-sleutel van `/webhook/angie-cli` is
+  `reply`, niet `replyText` (dat is alleen het interne n8n-veldnaam vóór
+  de Respond-node 'm hernoemt, zie `patch-cli-bypass.sh`) — `angie_mcp_bridge.py`
+  keek hier eerst per ongeluk naar de verkeerde sleutel (gefixt).
 
 ## Geleerde les (meta)
 
