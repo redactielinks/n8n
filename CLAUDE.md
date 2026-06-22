@@ -11,6 +11,26 @@ nieuwe credential, Telegram aan/uit, etc.), zodat een volgende sessie niet
 opnieuw hoeft te worden bijgepraat. `docs/angie/TODO.md` is iets anders: dat
 is de lijst met *openstaande* punten met een klaarstaand script.
 
+## Upstream n8n-codebase (alleen relevant buiten docs/angie/)
+
+Onderstaande commando's gelden voor de rest van de monorepo (pnpm workspaces
++ Turbo), maar zijn voor dit project verder niet van belang — er wordt hier
+niet aan de n8n-broncode zelf ontwikkeld.
+
+- Package manager: **pnpm ≥10.2.1** (Node.js ≥22.16), via corepack.
+- `pnpm build` / `pnpm build:backend` / `pnpm build:frontend` / `pnpm build:nodes`
+- `pnpm dev` (alles) / `pnpm dev:be` / `pnpm dev:fe`
+- `pnpm lint` / `pnpm lintfix` / `pnpm format` / `pnpm typecheck`
+- `pnpm test` (alles) / `pnpm test:backend` / `pnpm test:frontend`
+  — binnen een losse package-map: `pnpm build` / `pnpm test` / `pnpm dev`
+  voor alleen die package.
+- E2E: `pnpm dev:e2e` (interactief) / `pnpm test:e2e:ui` (headless, Cypress).
+- Workspace-structuur: `packages/cli` (n8n-CLI/backend-server),
+  `packages/core` (workflow-executionengine, webhooks, LangChain-integraties),
+  `packages/workflow` (gedeelde interfaces/baselogic), `packages/nodes-base`
+  (400+ standaard nodes/credentials), `packages/frontend/editor-ui`
+  (Vue 3-editor), plus ~30 interne `packages/@n8n/*`-libs.
+
 ## Vaste instructies van de gebruiker
 
 - **Antwoord altijd in het Nederlands.**
