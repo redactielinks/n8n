@@ -163,6 +163,24 @@ staat zonder dat bevestigd te zien.
   verzekeringspremie, energie, huur e.d.) — zichtbaar in de frontmatter, de
   "Samenvatting"-sectie op de wiki-pagina én het directe antwoord ("...
   Periode: januari 2026."). Voor eenmalige documenten blijft dit veld leeg.
+- **LLM-hallucinatie bij niet-factuurtekst (gemeld door gebruiker 23 juni
+  2026, met screenshots).** De vrije-tekst-instructie "koppel mijn
+  brouwer.gert@gmail.com account aan n8n" (gestuurd via Telegram, naar
+  Hermes Agent, maar nog beantwoord door de **n8n Telegram Trigger** —
+  bewijst dat die node op dat moment nog actief was, zie hieronder) werd
+  door de intentclassificatie ten onrechte als `administratie`
+  geclassificeerd. `verwerkFinancieelDocument` MOEST daardoor JSON-
+  factuurvelden teruggeven en verzon een complete nepfactuur ("Bakkerij De
+  Gouden Brood", FB-2024-0315-001, €105,93) die echt op de wiki werd
+  opgeslagen. Script staat klaar:
+  `patch-fix-llm-hallucinatie-niet-document.sh` (23 juni 2026, **nog niet
+  bevestigd gedraaid**) — voegt een `is_document`-veld toe aan de
+  LLM-extractie (geen verzonnen velden meer als de tekst geen document is,
+  valt dan terug op een gewone notitie), verduidelijkt de
+  intentclassificatie, én ruimt de al opgeslagen nepfactuur + koppeling op
+  de Persoonlijk-pagina automatisch op. Lost niet de eigenlijke
+  Gmail-koppeling op — dat kan alleen via de n8n-webinterface (OAuth2),
+  zie `TODO.md`.
 - **Pas op met de volgorde van openstaande scripts op de Pi.** Stand 19 juni
   2026, avond: de live installatie zat vast op een encryptiesleutel-fout
   (zie hierboven), waardoor zowel `patch-llm-calls-naar-openrouter.sh` als
