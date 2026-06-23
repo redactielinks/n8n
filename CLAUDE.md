@@ -124,10 +124,16 @@ staat zonder dat bevestigd te zien.
   de n8n-webhook via `tailscale funnel`).
 - Eén workflow: "Secretaresse — Persoonlijk AI Assistent", id
   `YdNGeswnhhzFdTFy`.
-- **Telegram wordt niet meer gebruikt** — de gebruiker werkt rechtstreeks via
-  de wiki-site-chat en de CLI-webhook (`/webhook/angie-cli`, toegevoegd door
-  `patch-cli-bypass.sh`). De Telegram-trigger/nodes zijn niet verwijderd uit
-  de workflow, maar zijn nu legacy/ongebruikt.
+- **Telegram wordt niet meer via n8n gebruikt** — de gebruiker werkt
+  rechtstreeks via de wiki-site-chat en de CLI-webhook (`/webhook/angie-cli`,
+  toegevoegd door `patch-cli-bypass.sh`). Sinds Hermes Agent (Mac Mini, 22
+  juni 2026) een eigen Telegram-gateway draait op datzelfde bottoken, kan
+  de Telegram Trigger-node in de n8n-workflow niet langer ook actief
+  blijven — één bottoken kan niet gelijktijdig een n8n-webhook én een
+  losse gateway bedienen. Script staat klaar: `patch-telegram-trigger-uit.sh`
+  (23 juni 2026, **nog niet bevestigd gedraaid**) — zet de node op
+  `disabled` en ruimt Telegram's eigen webhook-registratie op via
+  `deleteWebhook`.
 - Twee gescheiden LLM-paden in de workflow:
   - **Hoofd-"AI Agent"-node** (tool-calling via LangChain) → OpenRouter,
     credential `oITPdZPojDOLJaCJ` ("OpenRouter account"). Huidig model:
