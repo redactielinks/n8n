@@ -163,6 +163,20 @@ staat zonder dat bevestigd te zien.
   verzekeringspremie, energie, huur e.d.) — zichtbaar in de frontmatter, de
   "Samenvatting"-sectie op de wiki-pagina én het directe antwoord ("...
   Periode: januari 2026."). Voor eenmalige documenten blijft dit veld leeg.
+- **Encryptiesleutel opnieuw gewisseld (ontdekt 23 juni 2026, via
+  `inspect-telegram-trigger-status.sh`).** Zelfde terugkerende probleem als
+  17/19 juni: een docker-herstart gaf `N8N_ENCRYPTION_KEY` niet expliciet
+  mee, waardoor n8n een nieuwe sleutel genereerde. Dit keer is niet alleen
+  de Telegram-credential geraakt maar ook **OpenRouter** — dus de hele
+  assistent (wiki-chat, CLI-webhook, documentverwerking) stond hierdoor
+  stil. Oorzaak (welke `docker run` de sleutel miste) nog niet
+  achterhaald. Script staat klaar: `fix-credentials-na-sleutelwissel.sh`
+  (23 juni 2026, **nog niet bevestigd gedraaid**) — laat de OpenRouter-key
+  en het Telegram-bottoken opnieuw lokaal invoeren onder de huidige
+  sleutel, en zet die sleutel daarna vast. **Moet vóór alle andere
+  openstaande patches gedraaid worden** (die falen anders al bij de
+  credential-decryptiestap, zoals ook bij `patch-telegram-trigger-uit.sh`
+  gebeurde).
 - **LLM-hallucinatie bij niet-factuurtekst (gemeld door gebruiker 23 juni
   2026, met screenshots).** De vrije-tekst-instructie "koppel mijn
   brouwer.gert@gmail.com account aan n8n" (gestuurd via Telegram, naar
