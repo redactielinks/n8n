@@ -11,7 +11,12 @@
   en iets hormonaal/medicatie-gerelateerd. Voor het hormonale/medicatie-deel geldt:
   dit is aan huisarts/specialist, dit systeem geeft daar geen inhoudelijk advies over.
 - Medicatie / behandeling:
-- Concrete doelen (kort/middellang/lang):
+- Concrete doelen (2026-07-04), alle drie tegelijk relevant, geen prioritering
+  afgedwongen:
+  1. Grip op het kortetermijngeheugen — dagelijkse chaos verminderen.
+  2. Sociaal patroon — beter kunnen verbinden zonder de empathie-mismatch die
+     omslaat in frustratie/boosheid.
+  3. Werk/uitdaging — bore-out vermijden, gaven benutten.
 - Vaste momenten in de dag (voor externe triggers):
 - Sociaal patroon (2026-07-04): speelt al jaren, de 2E-diagnose heeft er alleen een
   naam aan gegeven — geen nieuw of verslechterend patroon, wel nu beter te duiden.
