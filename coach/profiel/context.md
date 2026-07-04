@@ -7,8 +7,15 @@
 
 ## Aan te vullen door Gert
 
-- Gezondheid:
+- Gezondheid: speelt op meerdere vlakken tegelijk — slaap, energie/vermoeidheid,
+  en iets hormonaal/medicatie-gerelateerd. Voor het hormonale/medicatie-deel geldt:
+  dit is aan huisarts/specialist, dit systeem geeft daar geen inhoudelijk advies over.
 - Medicatie / behandeling:
 - Concrete doelen (kort/middellang/lang):
 - Vaste momenten in de dag (voor externe triggers):
+- Sociaal patroon (2026-07-04): trekt zich sinds het besef van 2E steeds meer terug,
+  sluit zich af voor omgeving. Vindt het moeilijker om met familie/vrienden te praten:
+  het gevoel dat wat hij denkt/ziet/hoort/voelt voor anderen niet te volgen is of niet
+  goed te verwoorden valt. Raakt daardoor snel geëmotioneerd, reageert onbewust snel
+  en vaak kwaad wanneer anderen niet mee willen denken/brainstormen.
 - Overig:
