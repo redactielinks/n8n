@@ -13,8 +13,10 @@
 - Medicatie / behandeling:
 - Concrete doelen (kort/middellang/lang):
 - Vaste momenten in de dag (voor externe triggers):
-- Sociaal patroon (2026-07-04): trekt zich sinds het besef van 2E steeds meer terug,
-  sluit zich af voor omgeving. Vindt het moeilijker om met familie/vrienden te praten:
+- Sociaal patroon (2026-07-04): speelt al jaren, de 2E-diagnose heeft er alleen een
+  naam aan gegeven — geen nieuw of verslechterend patroon, wel nu beter te duiden.
+  Trekt zich terug, sluit zich af voor omgeving. Vindt het moeilijker om met
+  familie/vrienden te praten:
   het gevoel dat wat hij denkt/ziet/hoort/voelt voor anderen niet te volgen is of niet
   goed te verwoorden valt. Raakt daardoor snel geëmotioneerd, reageert onbewust snel
   en vaak kwaad wanneer anderen niet mee willen denken/brainstormen.
