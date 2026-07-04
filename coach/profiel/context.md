@@ -17,7 +17,15 @@
   2. Sociaal patroon — beter kunnen verbinden zonder de empathie-mismatch die
      omslaat in frustratie/boosheid.
   3. Werk/uitdaging — bore-out vermijden, gaven benutten.
-- Vaste momenten in de dag (voor externe triggers):
+- Vaste momenten in de dag (2026-07-04, voor externe triggers):
+  Vroeg wakker → toilet → browsen in bed op iPhone (nieuws, ideeën/inspiratie uit
+  artikelen, YouTube, TikTok, via AI-tools als Claude/Gemini/NotebookLM) → mail en
+  agenda lezen → eerste medicatie (o.a. pantoprazol) → douchen, aankleden →
+  Apple Watch opladen → vervolgmedicatie.
+  Door de dag heen is de iPhone het centrale werktuig: lezen, video's, mail/WhatsApp;
+  daarnaast programmeren via Claude Code op Mac mini, Pi5 en Ubuntu-server.
+  → bruikbare ankerpunten voor nieuwe gewoontes: na toilet (vóór het browsen),
+  na eerste medicatie, na douchen.
 - Sociaal patroon (2026-07-04): speelt al jaren, de 2E-diagnose heeft er alleen een
   naam aan gegeven — geen nieuw of verslechterend patroon, wel nu beter te duiden.
   Trekt zich terug, sluit zich af voor omgeving. Vindt het moeilijker om met
