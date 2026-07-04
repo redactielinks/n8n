@@ -33,4 +33,11 @@
   het gevoel dat wat hij denkt/ziet/hoort/voelt voor anderen niet te volgen is of niet
   goed te verwoorden valt. Raakt daardoor snel geëmotioneerd, reageert onbewust snel
   en vaak kwaad wanneer anderen niet mee willen denken/brainstormen.
-- Overig:
+- Overig (2026-07-04): geeft aan momenteel geen doel meer in het leven te ervaren —
+  "aan het overleven", "aan het vegeteren", komt nergens toe. Communiceert slecht
+  met vrouw en familie, trekt zich het liefst terug om na te denken en te lezen.
+  Veiligheidscheck (2026-07-04): geen gedachten om zichzelf iets aan te doen,
+  geen plan/intentie — het gaat om leegte en gebrek aan motivatie, niet acuut risico.
+  Aanbevolen: dit bespreken met huisarts of POH-GGZ, naast de coaching hier.
+  Financieel: zit in de WIA (afgekeurd), heeft financieel weinig ruimte om risico
+  te nemen — relevant bij het wegen van elk verdienmodel-idee (zie parkeerplaats).
