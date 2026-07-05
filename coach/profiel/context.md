@@ -10,7 +10,10 @@
 - Gezondheid: speelt op meerdere vlakken tegelijk — slaap, energie/vermoeidheid,
   en iets hormonaal/medicatie-gerelateerd. Voor het hormonale/medicatie-deel geldt:
   dit is aan huisarts/specialist, dit systeem geeft daar geen inhoudelijk advies over.
-- Medicatie / behandeling:
+- Medicatie / behandeling: gebruikt Mounjaro (tirzepatide); dosis vorige week
+  (rond 2026-06-28) verhoogd van 5 mg naar 7,5 mg. Sindsdien (2026-07-05) af en toe
+  wazig zien en duizeligheid. Medicatie-inhoudelijk is dit voor de voorschrijver/
+  huisarts, dit systeem doet daar geen uitspraak over.
 - Concrete doelen (2026-07-04), alle drie tegelijk relevant, geen prioritering
   afgedwongen:
   1. Grip op het kortetermijngeheugen — dagelijkse chaos verminderen.
