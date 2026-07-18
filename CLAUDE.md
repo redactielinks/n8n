@@ -143,10 +143,12 @@ staat zonder dat bevestigd te zien.
   - **Code-node "Verwerk Wiki Commando"** doet eigen rauwe `httpRequest`-
     aanroepen (niet via n8n's credential-systeem) voor platte
     JSON-extractie/titelgeneratie (geen tool-calling nodig). Draaide eerst
-    op een lokale LM Studio-server op een Mac Mini; die staat sinds 19 juni
-    2026 niet meer aan. Gemigreerd naar OpenRouter (zelfde credential),
-    standaardmodel `nousresearch/hermes-4-70b` — de tool-calling-beperking
-    van Hermes is hier irrelevant, dit zijn platte completions.
+    op een lokale LM Studio-server op een Mac Mini; gemigreerd naar
+    OpenRouter (zelfde credential), standaardmodel
+    `nousresearch/hermes-4-70b` — de tool-calling-beperking van Hermes is
+    hier irrelevant, dit zijn platte completions. LM Studio draait per
+    18 juli 2026 weer actief op de Mac Mini (zie Mac Mini-sectie hieronder),
+    maar de workflow gebruikt nog steeds OpenRouter.
 - Kennisbank-inhoud staat alleen lokaal op de Pi (`~/kennisbank`) — bewust
   nooit naar GitHub gepusht (uit git-historie verwijderd).
 - Bij een mislukte LLM-aanroep in "Verwerk Wiki Commando" wordt sinds
@@ -214,6 +216,28 @@ staat zonder dat bevestigd te zien.
   operationeel risico nu Telegram niet meer gebruikt wordt, maar nog niet
   gerouleerd/verwijderd — overleg met gebruiker voor actie (roteren via
   @BotFather, of de hele Telegram-integratie opruimen).
+
+## Mac Mini — hardware & lokale AI-tools (stand: 18 juli 2026)
+
+- **Hardware:** Apple Mac Mini M1, 16 GB unified memory (CPU + GPU delen
+  dit geheugen). Harde grens: modellen groter dan ~10–11 GB passen niet
+  bruikbaar in het geheugen naast macOS-overhead.
+- **Claude desktop-app** (versie 1.18286.0) — actief.
+- **LM Studio** — actief (per 18 juli 2026 weer aan; was tijdelijk uit
+  rond 19 juni 2026). Draait met MLX-backend voor Apple Silicon.
+  Geïnstalleerde modellen: `mlx-community/gemma-3-4b-it-qat-4bit` (~2 GB).
+- **Ollama** — actief (`ollama serve` + GUI). Geïnstalleerde modellen
+  (allemaal 4.7–5.2 GB, passen elk afzonderlijk op 16 GB):
+  - `qwen2.5:7b` — Alibaba Qwen 2.5, 7B
+  - `deepseek-r1:8b` — DeepSeek R1 redeneermodel, 8B
+  - `gifted-coach:latest` — custom modelfile (doel onbekend)
+  - `hermes3:latest` — NousResearch Hermes 3, lokale versie
+  - `critic:latest` — custom modelfile (doel onbekend)
+  - ~~`nemotron:latest`~~ — verwijderd 18 juli 2026 (42 GB, paste niet op
+    16 GB M1)
+- Ollama is **niet** via Homebrew geïnstalleerd maar als standalone `.app`.
+- Nooit twee zware modellen tegelijk laden (Ollama + LM Studio samen kan
+  krap zijn afhankelijk van welk model actief is).
 
 ## Hermes Agent (Mac Mini) — sinds 20 juni 2026
 
