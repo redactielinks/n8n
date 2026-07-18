@@ -230,9 +230,12 @@ staat zonder dat bevestigd te zien.
   (allemaal 4.7–5.2 GB, passen elk afzonderlijk op 16 GB):
   - `qwen2.5:7b` — Alibaba Qwen 2.5, 7B
   - `deepseek-r1:8b` — DeepSeek R1 redeneermodel, 8B
-  - `gifted-coach:latest` — custom modelfile (doel onbekend)
+  - `gifted-coach:latest` — zelf gebouwd via Claude Code; persoonlijke
+    coach voor de gebruiker als twice exceptional persoon: psychologische
+    begeleiding en praktische tips van specialisten op dat gebied
   - `hermes3:latest` — NousResearch Hermes 3, lokale versie
-  - `critic:latest` — custom modelfile (doel onbekend)
+  - `critic:latest` — zelf gebouwd via Claude Code; sparringpartner voor
+    ideeën en plannen
   - ~~`nemotron:latest`~~ — verwijderd 18 juli 2026 (42 GB, paste niet op
     16 GB M1)
 - Ollama is **niet** via Homebrew geïnstalleerd maar als standalone `.app`.
